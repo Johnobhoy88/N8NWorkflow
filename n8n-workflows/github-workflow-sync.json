@@ -1,0 +1,248 @@
+{
+  "project_summary": "GitHub webhook-triggered workflow that automatically syncs n8n workflows from Git repository when code is pushed to branch, with Gmail notifications for success/failure",
+  "nodes_required": [
+    {
+      "name": "GitHub Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "github-workflow-sync",
+        "responseMode": "onReceived",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "description": "Receives GitHub push webhook events",
+      "expected_payload": {
+        "ref": "refs/heads/branch-name",
+        "repository": {
+          "full_name": "Johnobhoy88/N8NWorkflow"
+        },
+        "pusher": {
+          "name": "string"
+        },
+        "commits": "array"
+      }
+    },
+    {
+      "name": "Extract Push Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const payload = items[0].json.body || items[0].json;\n\nconst branch = payload.ref ? payload.ref.replace('refs/heads/', '') : 'unknown';\nconst repo = payload.repository?.full_name || 'unknown';\nconst pusher = payload.pusher?.name || 'unknown';\nconst commitCount = payload.commits?.length || 0;\nconst commitMessages = payload.commits?.slice(0, 3).map(c => c.message).join('; ') || 'No commits';\n\nreturn {\n  json: {\n    branch: branch,\n    repository: repo,\n    pusher: pusher,\n    commitCount: commitCount,\n    commitMessages: commitMessages,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "description": "Extracts relevant data from GitHub webhook payload"
+    },
+    {
+      "name": "Call n8n API - Pull Workflows",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [750, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://highlandai.app.n8n.cloud/api/v1/source-control/pull",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $credentials.n8nApi.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  \"force\": false\n}) }}",
+        "options": {
+          "redirect": {
+            "redirect": {}
+          },
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "description": "Calls n8n source control API to pull latest workflows from Git",
+      "continueOnFail": true
+    },
+    {
+      "name": "Check for Errors",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1000, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "success-check",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isEmpty"
+              }
+            },
+            {
+              "id": "status-check",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 299,
+              "operator": {
+                "type": "number",
+                "operation": "smaller",
+                "singleValue": 299
+              }
+            }
+          ],
+          "combineOperation": "all"
+        },
+        "options": {}
+      },
+      "description": "Routes to success or error path based on API response"
+    },
+    {
+      "name": "Format Success Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 200],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const pushData = items[0].json;\nconst apiResponse = items[0].json;\n\nreturn {\n  json: {\n    subject: '✓ n8n Workflows Synced Successfully',\n    message: `<h2>GitHub Workflow Sync Complete</h2>\n<p><strong>Repository:</strong> ${pushData.repository}</p>\n<p><strong>Branch:</strong> ${pushData.branch}</p>\n<p><strong>Pushed by:</strong> ${pushData.pusher}</p>\n<p><strong>Commits:</strong> ${pushData.commitCount}</p>\n<p><strong>Messages:</strong> ${pushData.commitMessages}</p>\n<hr>\n<p><strong>Sync Status:</strong> SUCCESS</p>\n<p><strong>API Response:</strong> ${apiResponse.statusCode} ${apiResponse.statusMessage || 'OK'}</p>\n<p><em>Synced at: ${pushData.timestamp}</em></p>`,\n    timestamp: pushData.timestamp\n  }\n};"
+      },
+      "description": "Formats success notification email content"
+    },
+    {
+      "name": "Format Error Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 400],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const pushData = items[0].json;\nconst apiResponse = items[0].json;\n\nconst errorMessage = apiResponse.error?.message || apiResponse.statusMessage || 'Unknown error';\nconst statusCode = apiResponse.statusCode || 'N/A';\n\nreturn {\n  json: {\n    subject: '✗ n8n Workflow Sync Failed',\n    message: `<h2 style=\"color: red;\">GitHub Workflow Sync FAILED</h2>\n<p><strong>Repository:</strong> ${pushData.repository}</p>\n<p><strong>Branch:</strong> ${pushData.branch}</p>\n<p><strong>Pushed by:</strong> ${pushData.pusher}</p>\n<p><strong>Commits:</strong> ${pushData.commitCount}</p>\n<hr>\n<p><strong>Error Status:</strong> ${statusCode}</p>\n<p><strong>Error Message:</strong> ${errorMessage}</p>\n<hr>\n<p><em>Failed at: ${pushData.timestamp}</em></p>\n<p><strong>Action Required:</strong> Check n8n logs and verify Git integration settings.</p>`,\n    timestamp: pushData.timestamp\n  }\n};"
+      },
+      "description": "Formats error alert email content"
+    },
+    {
+      "name": "Send Success Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1500, 200],
+      "parameters": {
+        "fromEmail": "noreply@n8n.io",
+        "toEmail": "jpmcmillan67@gmail.com",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.message }}"
+      },
+      "description": "Sends success notification via Gmail"
+    },
+    {
+      "name": "Send Error Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1500, 400],
+      "parameters": {
+        "fromEmail": "noreply@n8n.io",
+        "toEmail": "jpmcmillan67@gmail.com",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.message }}"
+      },
+      "description": "Sends error alert via Gmail"
+    }
+  ],
+  "connection_paths": [
+    "GitHub Webhook → Extract Push Data",
+    "Extract Push Data → Call n8n API - Pull Workflows",
+    "Call n8n API - Pull Workflows → Check for Errors",
+    "Check for Errors → Format Success Message (true output)",
+    "Check for Errors → Format Error Message (false output)",
+    "Format Success Message → Send Success Email",
+    "Format Error Message → Send Error Email"
+  ],
+  "data_schema": {
+    "webhook_output": {
+      "ref": "refs/heads/branch-name",
+      "repository": {
+        "full_name": "Johnobhoy88/N8NWorkflow"
+      },
+      "pusher": {
+        "name": "string"
+      },
+      "commits": "array"
+    },
+    "extract_output": {
+      "branch": "string",
+      "repository": "string",
+      "pusher": "string",
+      "commitCount": "number",
+      "commitMessages": "string",
+      "timestamp": "ISO timestamp"
+    },
+    "api_response": {
+      "statusCode": "number",
+      "statusMessage": "string",
+      "body": "object",
+      "error": "object (if failed)"
+    }
+  },
+  "implementation_steps": [
+    "1. Add Webhook node with path 'github-workflow-sync' and rawBody enabled",
+    "2. Add Code node to extract branch, repo, pusher, and commit data from webhook payload",
+    "3. Add HTTP Request node to call n8n API (https://highlandai.app.n8n.cloud/api/v1/source-control/pull) with JWT auth",
+    "4. Enable 'Continue On Fail' and 'Return Full Response' options on HTTP node",
+    "5. Add IF node to check for errors (statusCode < 300 and no error field)",
+    "6. Add two Code nodes: one for success message formatting, one for error message formatting",
+    "7. Add two Email Send nodes (Gmail OAuth2): one for success, one for errors",
+    "8. Connect IF true output → Success path → Success Email",
+    "9. Connect IF false output → Error path → Error Email",
+    "10. Test with manual trigger first, then configure GitHub webhook"
+  ],
+  "github_webhook_setup": {
+    "webhook_url": "https://highlandai.app.n8n.cloud/webhook/github-workflow-sync",
+    "payload_url": "Set in GitHub repo Settings → Webhooks",
+    "content_type": "application/json",
+    "events": ["push"],
+    "branch_filter": "claude/check-claude-n8-skills-011CUoK55UiGbPhvRphAwD9V",
+    "secret": "Optional - add webhook signature verification for production"
+  },
+  "n8n_api_credentials": {
+    "credential_type": "httpHeaderAuth",
+    "credential_name": "n8n API JWT",
+    "header_name": "Authorization",
+    "header_value": "Bearer <your-jwt-token>",
+    "note": "Obtain JWT token from n8n Cloud Settings → API → Create API Key"
+  },
+  "testing_strategy": {
+    "phase_1": "Test workflow with manual trigger and mock GitHub payload",
+    "phase_2": "Verify n8n API call with JWT token authentication",
+    "phase_3": "Test success path with valid API response",
+    "phase_4": "Test error path by temporarily using invalid credentials",
+    "phase_5": "Configure GitHub webhook and test with actual push event",
+    "phase_6": "Verify Gmail notifications arrive for both success and failure scenarios"
+  },
+  "production_considerations": {
+    "rate_limiting": "GitHub webhooks have no retry - ensure n8n instance is stable",
+    "security": "Add webhook signature verification using GitHub secret",
+    "monitoring": "Set up n8n execution monitoring for this critical workflow",
+    "branch_filtering": "Add code to only sync on specific branches if needed",
+    "idempotency": "n8n source-control/pull API is idempotent - safe to call multiple times",
+    "error_recovery": "Manual retry via n8n UI if sync fails due to merge conflicts"
+  }
+}
