@@ -34,7 +34,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=AIzaSyDwHRrv4WHwHDDvK0KzdfpTfm1pnMBbNPk",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=AIzaSyDwHRrv4WHwHDDvK0KzdfpTfm1pnMBbNPk",
         "authentication": "none",
         "sendHeaders": true,
         "headerParameters": {
@@ -67,7 +67,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=AIzaSyDwHRrv4WHwHDDvK0KzdfpTfm1pnMBbNPk",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=AIzaSyDwHRrv4WHwHDDvK0KzdfpTfm1pnMBbNPk",
         "authentication": "none",
         "sendHeaders": true,
         "headerParameters": {
@@ -111,7 +111,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=AIzaSyDwHRrv4WHwHDDvK0KzdfpTfm1pnMBbNPk",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=AIzaSyDwHRrv4WHwHDDvK0KzdfpTfm1pnMBbNPk",
         "authentication": "none",
         "sendHeaders": true,
         "headerParameters": {
