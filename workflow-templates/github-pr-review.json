@@ -1,0 +1,237 @@
+{
+  "name": "GitHub PR Automated Review Template",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pr-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "github-webhook",
+      "name": "GitHub Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.body.action }}",
+              "operation": "equals",
+              "value2": "opened"
+            }
+          ]
+        }
+      },
+      "id": "filter-pr-opened",
+      "name": "Filter PR Opened",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "owner": "={{ $json.body.repository.owner.login }}",
+        "repository": "={{ $json.body.repository.name }}",
+        "pullRequestNumber": "={{ $json.body.pull_request.number }}",
+        "additionalFields": {}
+      },
+      "id": "get-pr-details",
+      "name": "Get PR Details",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [690, 300],
+      "credentials": {
+        "githubApi": {
+          "id": "6",
+          "name": "GitHub API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "owner": "={{ $json.body.repository.owner.login }}",
+        "repository": "={{ $json.body.repository.name }}",
+        "pullRequestNumber": "={{ $json.body.pull_request.number }}",
+        "resource": "file"
+      },
+      "id": "get-pr-files",
+      "name": "Get PR Files",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [910, 300],
+      "credentials": {
+        "githubApi": {
+          "id": "6",
+          "name": "GitHub API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an expert code reviewer. Analyze the following code changes and provide constructive feedback on: 1) Code quality, 2) Potential bugs, 3) Security issues, 4) Performance concerns, 5) Best practices. Be concise and specific."
+            },
+            {
+              "role": "user",
+              "content": "=PR Title: {{ $json.title }}\n\nPR Description: {{ $json.body }}\n\nFiles Changed: {{ $json.files.length }}\n\nDiff Summary: {{ JSON.stringify($json.files) }}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 2000
+        }
+      },
+      "id": "ai-code-review",
+      "name": "AI Code Review (GPT-4)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [1130, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "1",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const reviewText = $input.first().json.response;\nconst prUrl = $input.first().json.pr_url;\nconst filesChanged = $input.first().json.files.length;\n\nreturn [\n  {\n    json: {\n      body: `## 🤖 AI Code Review\n\n${reviewText}\n\n---\n\n**Files reviewed:** ${filesChanged}\n**Review powered by:** GPT-4\n\n*This is an automated review. Please verify suggestions before implementing.*`,\n      pr_url: prUrl\n    }\n  }\n];"
+      },
+      "id": "format-review-comment",
+      "name": "Format Review Comment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1350, 300]
+    },
+    {
+      "parameters": {
+        "owner": "={{ $json.body.repository.owner.login }}",
+        "repository": "={{ $json.body.repository.name }}",
+        "pullRequestNumber": "={{ $json.body.pull_request.number }}",
+        "resource": "review",
+        "body": "={{ $json.body }}",
+        "event": "COMMENT"
+      },
+      "id": "post-review-comment",
+      "name": "Post Review Comment",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [1570, 300],
+      "credentials": {
+        "githubApi": {
+          "id": "6",
+          "name": "GitHub API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "owner": "={{ $json.body.repository.owner.login }}",
+        "repository": "={{ $json.body.repository.name }}",
+        "pullRequestNumber": "={{ $json.body.pull_request.number }}",
+        "resource": "label",
+        "labels": ["ai-reviewed"]
+      },
+      "id": "add-label",
+      "name": "Add AI-Reviewed Label",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [1790, 300],
+      "credentials": {
+        "githubApi": {
+          "id": "6",
+          "name": "GitHub API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"success\", \"message\": \"PR review completed\" } }}"
+      },
+      "id": "webhook-response",
+      "name": "Send Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2010, 300]
+    },
+    {
+      "parameters": {
+        "errorMessage": "PR review workflow failed"
+      },
+      "id": "error-handler",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [1130, 500]
+    },
+    {
+      "parameters": {
+        "channelId": "={{ $env.SLACK_CHANNEL_ID }}",
+        "text": "=⚠️ PR Review Error\nRepository: {{ $json.repository }}\nPR: {{ $json.pr_number }}\nError: {{ $json.error.message }}"
+      },
+      "id": "notify-error",
+      "name": "Notify Error",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [1350, 500],
+      "credentials": {
+        "slackApi": {
+          "id": "5",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "GitHub Webhook": {
+      "main": [[{"node": "Filter PR Opened", "type": "main", "index": 0}]]
+    },
+    "Filter PR Opened": {
+      "main": [
+        [{"node": "Get PR Details", "type": "main", "index": 0}],
+        []
+      ]
+    },
+    "Get PR Details": {
+      "main": [[{"node": "Get PR Files", "type": "main", "index": 0}]]
+    },
+    "Get PR Files": {
+      "main": [[{"node": "AI Code Review (GPT-4)", "type": "main", "index": 0}]]
+    },
+    "AI Code Review (GPT-4)": {
+      "main": [[{"node": "Format Review Comment", "type": "main", "index": 0}]]
+    },
+    "Format Review Comment": {
+      "main": [[{"node": "Post Review Comment", "type": "main", "index": 0}]]
+    },
+    "Post Review Comment": {
+      "main": [[{"node": "Add AI-Reviewed Label", "type": "main", "index": 0}]]
+    },
+    "Add AI-Reviewed Label": {
+      "main": [[{"node": "Send Webhook Response", "type": "main", "index": 0}]]
+    },
+    "Error Handler": {
+      "main": [[{"node": "Notify Error", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateDescription": "Automated GitHub PR review workflow triggered by webhooks. Uses GPT-4 to analyze code changes, posts detailed review comments, and adds labels. Includes error handling and notifications."
+  },
+  "id": "github-pr-review",
+  "tags": ["GitHub", "AI", "code-review", "automation", "GPT-4"]
+}
