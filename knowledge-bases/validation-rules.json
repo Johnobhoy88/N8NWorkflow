@@ -1,0 +1,259 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2025-11-05",
+  "validationCategories": {
+    "structural": {
+      "name": "Structural Validation",
+      "severity": "error",
+      "rules": [
+        {
+          "id": "node-id-uniqueness",
+          "name": "All Node IDs Must Be Unique",
+          "check": "No duplicate node IDs",
+          "severity": "error",
+          "fix": "Rename duplicate IDs to unique values",
+          "testMethod": "const ids = nodes.map(n => n.id); const unique = new Set(ids); assert.equal(ids.length, unique.size)"
+        },
+        {
+          "id": "positions-present",
+          "name": "All Nodes Must Have Positions",
+          "check": "All nodes have position: [x, y]",
+          "severity": "error",
+          "fix": "Add position coordinates to all nodes",
+          "testMethod": "nodes.forEach(n => assert(Array.isArray(n.position) && n.position.length === 2))"
+        },
+        {
+          "id": "connections-valid",
+          "name": "Connections Must Reference Existing Nodes",
+          "check": "All connection node names exist",
+          "severity": "error",
+          "fix": "Remove connections to non-existent nodes",
+          "testMethod": "Check connections.nodeName exists in nodes"
+        },
+        {
+          "id": "type-version-valid",
+          "name": "TypeVersion Must Match n8n Version",
+          "check": "typeVersion matches node-catalog.json",
+          "severity": "error",
+          "fix": "Update typeVersion to valid version",
+          "testMethod": "Validate against node-catalog for each node type"
+        },
+        {
+          "id": "required-fields-present",
+          "name": "All Required Node Fields Must Be Present",
+          "check": "Required fields from node config are present",
+          "severity": "error",
+          "fix": "Add missing required fields",
+          "testMethod": "Validate against node-catalog requiredFields"
+        }
+      ]
+    },
+    "configuration": {
+      "name": "Configuration Validation",
+      "severity": "error",
+      "rules": [
+        {
+          "id": "credentials-configured",
+          "name": "Required Credentials Must Be Set",
+          "check": "Nodes requiring credentials have credentials configured",
+          "severity": "error",
+          "fix": "Add credentials section to node",
+          "nodeTypes": ["n8n-nodes-base.httpRequest", "n8n-nodes-base.gmail", "n8n-nodes-base.postgres"]
+        },
+        {
+          "id": "http-contenttype-expressions",
+          "name": "HTTP Body Type Must Match Content",
+          "check": "If using expressions in body, contentType: 'raw'",
+          "severity": "error",
+          "nodeTypes": ["n8n-nodes-base.httpRequest"],
+          "pattern_id": "http-request-raw-body",
+          "fix": "Change contentType from 'json' to 'raw'"
+        },
+        {
+          "id": "form-field-types",
+          "name": "Form Fields Must Have Valid Type",
+          "check": "Field types are in allowed list",
+          "severity": "error",
+          "nodeTypes": ["n8n-nodes-base.formTrigger"],
+          "allowedTypes": ["text", "textarea", "email", "number", "checkbox", "dropdown", "multiSelect"]
+        }
+      ]
+    },
+    "patterns": {
+      "name": "Best Practice Pattern Validation",
+      "severity": "warning",
+      "rules": [
+        {
+          "id": "code-node-return-format",
+          "name": "Code Nodes Must Return Array Format",
+          "check": "Code node output matches [{json: {...}}]",
+          "severity": "error",
+          "nodeTypes": ["n8n-nodes-base.code"],
+          "pattern_id": "code-node-return-format",
+          "fix": "Wrap return value in array: return [...]"
+        },
+        {
+          "id": "error-handling-present",
+          "name": "API Nodes Should Have Error Handling",
+          "check": "continueOnFail: true on external API nodes",
+          "severity": "warning",
+          "nodeTypes": ["n8n-nodes-base.httpRequest"],
+          "pattern_id": "continue-on-fail",
+          "fix": "Add continueOnFail: true"
+        },
+        {
+          "id": "batch-processing",
+          "name": "Large Datasets Should Use Batching",
+          "check": "Data > 100 items uses SplitInBatches",
+          "severity": "warning",
+          "pattern_id": "batch-processing",
+          "fix": "Add SplitInBatches node before processing"
+        },
+        {
+          "id": "retry-logic",
+          "name": "API Calls Should Have Retry Logic",
+          "check": "HTTP nodes have retry configuration",
+          "severity": "warning",
+          "nodeTypes": ["n8n-nodes-base.httpRequest"],
+          "pattern_id": "retry-logic-api",
+          "fix": "Add retry configuration to node"
+        },
+        {
+          "id": "error-notification",
+          "name": "Workflows Should Notify on Error",
+          "check": "Error path sends notification",
+          "severity": "warning",
+          "pattern_id": "error-notification-user",
+          "fix": "Add email/Slack node to error path"
+        }
+      ]
+    },
+    "security": {
+      "name": "Security Validation",
+      "severity": "error",
+      "rules": [
+        {
+          "id": "no-hardcoded-keys",
+          "name": "No Hardcoded API Keys",
+          "check": "No API keys in URL, headers, or body",
+          "severity": "error",
+          "pattern_id": "no-hardcoded-secrets",
+          "fix": "Move to credentials or $env variables"
+        },
+        {
+          "id": "credentials-not-exposed",
+          "name": "Credentials Not Exposed in Workflow",
+          "check": "No sensitive data in visible fields",
+          "severity": "error",
+          "fix": "Use predefinedCredentialType field"
+        },
+        {
+          "id": "webhook-validation",
+          "name": "Webhook Should Validate Input",
+          "check": "Webhook has input validation",
+          "severity": "warning",
+          "nodeTypes": ["n8n-nodes-base.webhook"]
+        }
+      ]
+    },
+    "performance": {
+      "name": "Performance Validation",
+      "severity": "warning",
+      "rules": [
+        {
+          "id": "workflow-size",
+          "name": "Workflow Should Be Under 15 Nodes",
+          "check": "Node count < 15",
+          "severity": "warning",
+          "pattern_id": "workflow-size-limit",
+          "fix": "Split workflow into multiple smaller workflows"
+        },
+        {
+          "id": "loop-termination",
+          "name": "Loops Should Have Max Iterations",
+          "check": "SplitInBatches has maxIterations",
+          "severity": "warning",
+          "nodeTypes": ["n8n-nodes-base.splitInBatches"],
+          "fix": "Add maxIterations: 1000"
+        },
+        {
+          "id": "http-timeout",
+          "name": "HTTP Requests Should Have Timeout",
+          "check": "HTTP nodes have timeout set",
+          "severity": "warning",
+          "nodeTypes": ["n8n-nodes-base.httpRequest"],
+          "pattern_id": "http-timeout-setting",
+          "fix": "Set timeout: 30000"
+        }
+      ]
+    },
+    "requirements": {
+      "name": "Requirement Coverage Validation",
+      "severity": "warning",
+      "rules": [
+        {
+          "id": "brief-coverage",
+          "name": "All Brief Requirements Addressed",
+          "check": "Workflow nodes cover all brief requirements",
+          "severity": "warning",
+          "testMethod": "Compare workflow nodes to original brief requirements",
+          "fix": "Add missing nodes for unaddressed requirements"
+        },
+        {
+          "id": "data-sources",
+          "name": "All Data Sources Configured",
+          "check": "Brief mentions data sources, workflow fetches them",
+          "severity": "warning",
+          "fix": "Add nodes to fetch required data sources"
+        },
+        {
+          "id": "outputs-configured",
+          "name": "All Output Destinations Configured",
+          "check": "Brief specifies outputs, nodes send to them",
+          "severity": "warning",
+          "fix": "Add output nodes (email, database, API, etc.)"
+        }
+      ]
+    }
+  },
+  "validationScores": {
+    "critical": {
+      "weight": 10,
+      "description": "Errors that break workflow execution"
+    },
+    "major": {
+      "weight": 5,
+      "description": "Issues that cause incorrect behavior"
+    },
+    "warning": {
+      "weight": 2,
+      "description": "Best practice violations"
+    },
+    "info": {
+      "weight": 1,
+      "description": "Suggestions for improvement"
+    }
+  },
+  "autoCorrections": [
+    {
+      "id": "add-positions",
+      "description": "Auto-add positions to nodes missing them",
+      "algorithm": "Distribute nodes in grid: (index % 5) * 250, (Math.floor(index / 5)) * 300"
+    },
+    {
+      "id": "fix-http-contenttype",
+      "description": "Change JSON to raw if expressions detected",
+      "algorithm": "If body contains '{{' and contentType: 'json', change to 'raw'"
+    },
+    {
+      "id": "wrap-code-return",
+      "description": "Wrap Code node returns in array",
+      "algorithm": "If return value not array, wrap: return [return_value]"
+    },
+    {
+      "id": "add-error-handling",
+      "description": "Add continueOnFail to API nodes",
+      "algorithm": "Add continueOnFail: true to httpRequest nodes"
+    }
+  ]
+}
