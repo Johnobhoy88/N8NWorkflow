@@ -4,10 +4,16 @@
   "description": "n8n agentic workflow builder",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "setup-n8n": "node src/n8n-setup.js",
+    "test-n8n": "node -e \"const N8n = require('./src/n8n-setup.js'); new N8n().validateConnection().then(ok => process.exit(ok ? 0 : 1))\"",
+    "list-workflows": "node -e \"const N8n = require('./src/n8n-setup.js'); const n8n = new N8n(); n8n.validateConnection().then(() => n8n.getWorkflows().then(w => w.data.forEach(wf => console.log(wf.name))));\""
   },
   "keywords": ["n8n", "agentic", "workflow"],
   "author": "",
   "license": "MIT",
-  "dependencies": {}
+  "dependencies": {
+    "dotenv": "^16.0.3"
+  }
 }
+
