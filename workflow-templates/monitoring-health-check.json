@@ -1,5 +1,9 @@
 {
   "name": "System Monitoring and Health Check Template",
+  "_architecture": "Scheduled Trigger → Check System Health → [Healthy: Log Metrics] [Unhealthy: Alert + Log]. Branching pattern with dual outputs.",
+  "_connections": "Both branches from IF node reach output nodes (Slack + Database). No orphaned outputs. Error handler on API check.",
+  "_outputNodes": ["Send Slack Alert", "Log to Database"],
+  "_pattern": "Schedule → HTTP (Health Check) → IF (Status Check) → [Success: Log] [Failure: Alert+Log]",
   "nodes": [
     {
       "parameters": {

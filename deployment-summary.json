@@ -1,0 +1,135 @@
+{
+  "deployment_status": "partially_complete",
+  "workflow": {
+    "id": "U9Foh05pTUr542K2",
+    "name": "n8n Workflow Builder (Gemini) - with QA Validator",
+    "active": true,
+    "nodes_count": 13,
+    "url": "https://highlandai.app.n8n.cloud/workflow/U9Foh05pTUr542K2",
+    "deployment_timestamp": "2025-11-05T19:27:56.455Z",
+    "activation_timestamp": "2025-11-05T19:30:40.522Z"
+  },
+  "deployment_steps": [
+    {
+      "step": "1. Validate JSON",
+      "status": "complete",
+      "details": "Workflow JSON validated and structure confirmed correct"
+    },
+    {
+      "step": "2. Import to n8n Cloud",
+      "status": "complete",
+      "details": "Workflow successfully imported via API"
+    },
+    {
+      "step": "3. Activate Workflow",
+      "status": "complete",
+      "details": "Workflow activated using /api/v1/workflows/{id}/activate endpoint"
+    },
+    {
+      "step": "4. Verify Form Endpoint",
+      "status": "failed",
+      "details": "Form endpoint returning 'Problem loading form' error",
+      "error": "Form Trigger not initializing properly via API activation"
+    },
+    {
+      "step": "5. Test Workflow",
+      "status": "pending",
+      "details": "Unable to test due to form endpoint issue"
+    }
+  ],
+  "form_endpoint": {
+    "expected_url": "https://highlandai.app.n8n.cloud/form/workflow-builder",
+    "status": "inaccessible",
+    "error_message": "This usually occurs if the n8n workflow serving this form is deactivated or no longer exist"
+  },
+  "root_cause_analysis": {
+    "issue": "Form Trigger not starting via API activation",
+    "likely_causes": [
+      "n8n Cloud Form Triggers require manual activation through the UI",
+      "Form Trigger webhook URL registration delay",
+      "Missing credential configuration for Gmail OAuth2",
+      "Workflow needs to be opened in the UI editor to initialize triggers"
+    ],
+    "evidence": [
+      "Workflow shows active: true in API response",
+      "Form endpoint returns generic error page",
+      "No executions recorded in workflow history",
+      "triggerCount shows 1 but form not accessible"
+    ]
+  },
+  "next_actions": [
+    {
+      "action": "Manual UI Activation",
+      "priority": "critical",
+      "steps": [
+        "1. Log into n8n Cloud at https://highlandai.app.n8n.cloud",
+        "2. Navigate to workflow 'n8n Workflow Builder (Gemini) - with QA Validator'",
+        "3. Open the workflow in the editor",
+        "4. Click the 'Inactive' toggle to activate (or deactivate and reactivate)",
+        "5. Verify the Form Trigger node shows a green webhook URL",
+        "6. Test the form at https://highlandai.app.n8n.cloud/form/workflow-builder"
+      ]
+    },
+    {
+      "action": "Configure Gmail Credentials",
+      "priority": "high",
+      "steps": [
+        "1. In n8n Cloud, go to Credentials",
+        "2. Create or verify 'Gmail OAuth2' credential",
+        "3. Ensure both 'Send Workflow Email' and 'Send Error Email' nodes reference this credential",
+        "4. Test the credential connection"
+      ]
+    },
+    {
+      "action": "Test Workflow Execution",
+      "priority": "high",
+      "steps": [
+        "1. Once form is accessible, submit test data",
+        "2. Monitor execution in n8n Cloud executions tab",
+        "3. Verify email delivery to test address",
+        "4. Check that all 3 AI agents (Brief Parser, Architect, QA Validator) execute successfully"
+      ]
+    }
+  ],
+  "api_credentials": {
+    "n8n_api_url": "https://highlandai.app.n8n.cloud",
+    "api_key_configured": true,
+    "gemini_api_key_configured": true,
+    "gmail_oauth2_configured": "unknown - requires UI verification"
+  },
+  "workflow_architecture": {
+    "trigger": "Form Trigger (path: workflow-builder)",
+    "ai_agents": [
+      "Brief Parser (Gemini 2.0)",
+      "Architect Agent (Gemini 2.0)",
+      "Synthesis Agent (Gemini 2.0)",
+      "QA Validator Agent (Gemini 2.0)"
+    ],
+    "code_nodes": [
+      "Prepare Synthesis Context",
+      "Format Final Output",
+      "Load Knowledge Base",
+      "Format QA Results",
+      "Error Handler"
+    ],
+    "output_nodes": [
+      "Send Workflow Email (Gmail)",
+      "Send Error Email (Gmail)"
+    ],
+    "error_handling": "Check for Errors (IF node) with dedicated error path"
+  },
+  "known_issues": {
+    "form_trigger_api_limitation": {
+      "description": "n8n Cloud API-activated workflows with Form Triggers may not register webhook URLs properly",
+      "workaround": "Manually activate workflow through n8n Cloud UI",
+      "status": "common_issue"
+    }
+  },
+  "recommendations": [
+    "Complete activation via n8n Cloud UI to enable Form Trigger",
+    "Verify Gmail OAuth2 credentials are properly configured",
+    "Test workflow with sample brief after UI activation",
+    "Monitor first few executions to ensure AI agents work correctly",
+    "Consider setting up error notifications for production use"
+  ]
+}

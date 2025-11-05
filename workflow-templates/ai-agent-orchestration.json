@@ -1,5 +1,9 @@
 {
   "name": "AI Agent Orchestration Template",
+  "_architecture": "Webhook Trigger → Route to Agents → Merge Results → Response. Each agent processes in parallel, results merge, response returns unified output.",
+  "_connections": "Both success and error paths route to Response node. No orphaned nodes.",
+  "_outputNodes": ["Webhook Response"],
+  "_pattern": "Webhook → Agent Orchestration → Merge → Response",
   "nodes": [
     {
       "parameters": {

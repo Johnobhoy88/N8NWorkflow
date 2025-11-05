@@ -265,6 +265,93 @@ return [{json: {result: geminiResponse}}];
 
 ---
 
+### Mistake #7: Disconnected Output Nodes ❌
+
+**Symptoms:**
+- Workflow runs but no output is sent (no email, no Slack message, no database update)
+- Email/notification nodes exist but never execute
+- Success path terminates before reaching output nodes
+- Workflow appears to complete but downstream users get no notification
+
+**Root Cause:**
+When using IF nodes for error checking, only the error branch is wired to handlers. The success branch either:
+1. Terminates at the error handler (success path never reaches output)
+2. Has the output node disconnected entirely (node exists but receives no input)
+3. Skips output nodes entirely (branches created but not connected to outputs)
+
+**Example (BROKEN):**
+```json
+"Check for Errors": {
+  "main": [
+    [{"node": "Error Handler", "type": "main", "index": 0}],
+    []  // ← FALSE branch empty! Success path has nowhere to go
+  ]
+},
+"Send Email": {
+  "main": [[]]  // ← No incoming connection = orphaned node
+}
+```
+
+**The Fix:**
+Both IF node branches (true and false) must route to appropriate output nodes:
+
+**Option 1 - Separate output nodes:**
+```json
+"Check for Errors": {
+  "main": [
+    [{"node": "Send Success Email", "type": "main", "index": 0}],  // TRUE
+    [{"node": "Send Error Email", "type": "main", "index": 0}]      // FALSE
+  ]
+}
+```
+
+**Option 2 - Both to same output (different message):**
+```json
+"Check for Errors": {
+  "main": [
+    [{"node": "Send Email", "type": "main", "index": 0}],  // TRUE
+    [{"node": "Send Email", "type": "main", "index": 0}]   // FALSE (both routes)
+  ]
+}
+```
+
+**Why it works:** Every IF node branch must have a destination. Empty branches `[]` create dead-ends where data gets lost.
+
+**Validation:** After fixing, check:
+1. All IF nodes have connections for BOTH outputs (main[0] and main[1])
+2. All email/output nodes have at least one incoming connection
+3. No empty connection arrays: `[]`
+4. Run Node Reachability Validator in validation script
+
+---
+
+## Node Reachability Validator
+
+To prevent orphaned nodes, the validation script now checks node reachability:
+
+```bash
+npm run validate-workflow workflow.json
+```
+
+Output will show:
+```
+✓ Node Reachability: All nodes reachable from trigger
+  - Form Trigger
+  - Process Data
+  - Check Errors
+  - Send Email ← Verified reachable
+  - Log Database
+```
+
+Or error if found:
+```
+✗ Node Reachability: Unreachable nodes
+  Node "Send Success Email" is unreachable (orphaned/disconnected)
+  Node "Archive Results" is unreachable (no incoming connection)
+```
+
+---
+
 ## Diagnostic Decision Tree
 
 ### Step 1: Identify Error Category
@@ -286,7 +373,8 @@ return [{json: {result: geminiResponse}}];
 │  └─ Missing data → Check previous node output in execution logs
 │
 └─ Integration Issues
-   ├─ Email not sending → Check Mistake #4 (use Gmail OAuth2)
+   ├─ Email not sending → Check Mistake #4 (Gmail OAuth2) or #7 (disconnected node)
+   ├─ Output node never executes → Check Mistake #7 (disconnected output nodes)
    ├─ AI API fails → Check Mistake #6 (authentication)
    └─ Credential errors → Check Mistake #2 (use native nodes)
 ```

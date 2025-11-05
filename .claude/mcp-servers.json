@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "n8n-api": {
+      "command": "node",
+      "args": [
+        "src/n8n-mcp.js"
+      ],
+      "env": {
+        "N8N_URL": "https://highlandai.app.n8n.cloud",
+        "N8N_API_TOKEN": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiOTUxYzExZi00MjczLTRjOGQtOWNlNy00MTg3OTAwODhhMTkiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzYyMzcwNzY2fQ.wx-Lz0yupdis7HKV6HLJtxGaZ4_mMlsZFib5fwQFHDg"
+      }
+    }
+  }
+}

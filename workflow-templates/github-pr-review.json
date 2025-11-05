@@ -1,5 +1,9 @@
 {
   "name": "GitHub PR Automated Review Template",
+  "_architecture": "GitHub Webhook → Fetch PR Details → AI Analysis → Post Review Comment. Linear flow with feedback loop to GitHub.",
+  "_connections": "Webhook → API → Code → GitHub Comment. Error handling routes to Slack alert. All paths complete.",
+  "_outputNodes": ["GitHub API (Post Comment)", "Slack Alert"],
+  "_pattern": "Webhook → HTTP (Fetch) → Code (AI Analysis) → HTTP (Post) → Response",
   "nodes": [
     {
       "parameters": {

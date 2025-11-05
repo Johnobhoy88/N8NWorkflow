@@ -1,5 +1,9 @@
 {
   "name": "API Sync Workflow Template",
+  "_architecture": "Webhook Trigger → Fetch Data (API) → Transform → Store (Database). Linear flow with error handling at API call.",
+  "_connections": "Success path: API → Transform → Database. Error path: API → Error Handler. Both paths complete cleanly.",
+  "_outputNodes": ["Database", "Webhook Response"],
+  "_pattern": "Webhook → HTTP Request → Code (Transform) → Database/Response",
   "nodes": [
     {
       "parameters": {

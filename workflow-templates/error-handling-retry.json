@@ -1,5 +1,9 @@
 {
   "name": "Error Handling and Retry Logic Template",
+  "_architecture": "API Call → Check Error → [Success: Continue] [Failure: Retry with Exponential Backoff] → Final Output. Demonstrates complete error handling with retry loop.",
+  "_connections": "Error branch loops back to API call with wait. Success branch continues to output. Both paths eventually reach completion node.",
+  "_outputNodes": ["Return Data", "Send Alert"],
+  "_pattern": "HTTP Request → Error Check (IF) → [Success→Output] [Failure→Retry→Wait→Loop Back] → Final Handler",
   "nodes": [
     {
       "parameters": {
