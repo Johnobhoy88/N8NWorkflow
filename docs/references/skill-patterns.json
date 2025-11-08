@@ -1,0 +1,550 @@
+{
+  "skill_code_patterns": [
+    {
+      "pattern_name": "template-instantiation",
+      "description": "How to instantiate and customize n8n workflow templates for user requirements",
+      "code_structure": "1. Load template from workflow-templates/ directory\n2. Parse template JSON structure\n3. Replace placeholder values with user-specific data\n4. Validate node connections and IDs\n5. Update credentials references\n6. Adjust position coordinates for new nodes\n7. Return complete workflow JSON",
+      "validation_checks": [
+        "All node IDs are unique within workflow",
+        "All connection references point to valid node names",
+        "All credentials have id and name properties",
+        "All nodes have required position coordinates [x, y]",
+        "Template contains 'name', 'nodes', 'connections', 'settings' properties",
+        "Expression syntax uses ={{ }} not {{ }} or ${{ }}",
+        "Environment variables use $env.VARIABLE_NAME format"
+      ],
+      "example_pseudocode": "template = loadTemplate('error-handling-retry.json')\ntemplate.name = userWorkflowName\nfor node in template.nodes:\n  if node.type == 'httpRequest':\n    node.parameters.url = userApiUrl\n  if node.credentials:\n    validateCredentialReference(node.credentials)\nreturn validateAndFormat(template)"
+    },
+    {
+      "pattern_name": "http-request-node-synthesis",
+      "description": "Generate HTTP Request nodes with proper contentType and expression handling",
+      "code_structure": "CRITICAL: Use contentType: 'raw' (NOT 'json') when body contains expressions\n\nPattern:\n{\n  \"parameters\": {\n    \"url\": \"={{ $env.API_URL }}/endpoint\",\n    \"method\": \"GET|POST|PUT|DELETE\",\n    \"authentication\": \"genericCredentialType\",\n    \"sendBody\": true,\n    \"contentType\": \"raw\",\n    \"body\": \"={{ JSON.stringify({key: $json.value}) }}\",\n    \"options\": {\n      \"timeout\": 30000,\n      \"retry\": {\n        \"retry\": {\n          \"maxRetries\": 3,\n          \"retryInterval\": 5000\n        }\n      }\n    }\n  },\n  \"continueOnFail\": true\n}",
+      "validation_checks": [
+        "If body contains ={{ }} expressions, contentType MUST be 'raw'",
+        "URL is valid and uses environment variables for sensitive endpoints",
+        "Method is one of: GET, POST, PUT, DELETE, PATCH",
+        "Timeout is set (default: 30000ms)",
+        "continueOnFail is true for error handling paths",
+        "Authentication type matches credential type",
+        "Retry configuration is present for critical API calls"
+      ],
+      "anti_patterns": [
+        "❌ contentType: 'json' with expressions - causes 'JSON parameter needs to be valid JSON' error",
+        "❌ Hardcoded API keys in URL or headers - use credentials or environment variables",
+        "❌ Missing timeout configuration - can cause hanging workflows",
+        "❌ Bearer token auth for API keys - use query parameters or header auth instead"
+      ]
+    },
+    {
+      "pattern_name": "code-node-synthesis",
+      "description": "Generate Code nodes with proper return format and data transformation patterns",
+      "code_structure": "CRITICAL: Code nodes MUST return [{json: {...}}] array format\n\nPattern:\n{\n  \"parameters\": {\n    \"functionCode\": \"const items = $input.all();\\nconst result = items.map(item => ({\\n  json: {\\n    // transformation logic\\n  }\\n}));\\nreturn result;\"\n  },\n  \"type\": \"n8n-nodes-base.code\",\n  \"typeVersion\": 2\n}\n\nTemplate Literal Pattern for Complex Strings:\nconst message = `Multi-line string with ${variable}`;\n\nNO nested template literals in JSON.stringify()",
+      "validation_checks": [
+        "Return statement is: return [{json: {...}}] or return result.map(...)",
+        "No $credentials access (not available in Code nodes)",
+        "Uses $input.all() or $input.first() to get data",
+        "Uses template literals for string building, NOT concatenation",
+        "Includes proper error handling with try/catch",
+        "Variables are declared with const/let (not var)",
+        "JSON.stringify() does not contain template literals inside",
+        "Code is readable with proper indentation (use \\n for line breaks)"
+      ],
+      "anti_patterns": [
+        "❌ return {json: {...}} - missing array wrapper",
+        "❌ const apiKey = $credentials.api.key - $credentials not available",
+        "❌ JSON.stringify({...}) inside another JSON.stringify() - causes escaping issues",
+        "❌ String concatenation: 'text' + variable + 'more' - use template literals",
+        "❌ var declarations - use const/let instead"
+      ]
+    },
+    {
+      "pattern_name": "error-handling-synthesis",
+      "description": "Implement comprehensive error handling with retry logic and notifications",
+      "code_structure": "Three-Layer Error Pattern:\n\n1. Node-Level Error Continuation:\n   continueOnFail: true (on nodes that may fail)\n\n2. Conditional Error Routing:\n   IF node checks for error existence:\n   {{ $json.error !== undefined }}\n\n3. Retry Logic with Exponential Backoff:\n   Code node calculates: Math.pow(2, attempt) * 1000\n   Wait node delays before retry\n\n4. Error Logging & Notification:\n   - Log to database\n   - Send Slack/email alerts\n   - Return error response\n\nConnections Pattern:\nNode → Check Error (IF)\n  ├─ True → Retry Logic → Wait → Retry Node\n  └─ False → Success Path",
+      "validation_checks": [
+        "Critical nodes have continueOnFail: true",
+        "IF nodes properly check for error existence",
+        "Retry counter prevents infinite loops (maxRetries: 3)",
+        "Exponential backoff formula is correct: Math.pow(2, attempt) * 1000",
+        "Error notifications include workflow name, execution ID, timestamp",
+        "Error details are logged to persistent storage (database)",
+        "Success and error paths are clearly separated",
+        "Error responses are user-friendly and actionable"
+      ],
+      "example_code": "// Retry Logic Code Node\nconst error = $input.first().json.error;\nconst attempt = $input.first().json.attempt || 1;\nconst maxRetries = 3;\n\nif (attempt < maxRetries) {\n  const waitTime = Math.pow(2, attempt) * 1000;\n  return [{\n    json: {\n      shouldRetry: true,\n      attempt: attempt + 1,\n      waitTime: waitTime,\n      error: error,\n      message: `Retry attempt ${attempt + 1} of ${maxRetries}`\n    }\n  }];\n} else {\n  return [{\n    json: {\n      shouldRetry: false,\n      message: 'Max retries exceeded',\n      error: error\n    }\n  }];\n}"
+    },
+    {
+      "pattern_name": "credential-management-synthesis",
+      "description": "Proper credential reference and environment variable patterns",
+      "code_structure": "Credential Reference Pattern:\n{\n  \"credentials\": {\n    \"credentialType\": {\n      \"id\": \"1\",\n      \"name\": \"Descriptive Credential Name\"\n    }\n  }\n}\n\nEnvironment Variable Pattern:\n{{ $env.VARIABLE_NAME }}\n\nSupported Credential Types:\n- openAiApi\n- anthropicApi\n- googlePalmApi\n- githubApi\n- slackApi\n- postgres\n- httpHeaderAuth\n- httpBasicAuth\n- oAuth2Api\n\nEmail on n8n Cloud:\nUSE: Gmail node with OAuth2\nDO NOT USE: SMTP nodes (restricted by N8N_BLOCK_ENV_ACCESS_IN_NODE)",
+      "validation_checks": [
+        "No hardcoded API keys or secrets in workflow JSON",
+        "All credentials have both 'id' and 'name' properties",
+        "Environment variables use $env prefix (not process.env)",
+        "Gmail OAuth2 is used instead of SMTP for n8n Cloud",
+        "Credential type matches the node type requirements",
+        "Sensitive data is never logged or returned in responses",
+        "API keys for Gemini use query parameters, not Bearer tokens"
+      ],
+      "security_requirements": [
+        "Never expose credentials in logs or error messages",
+        "Use environment variables for all endpoints and API URLs",
+        "Rotate credential IDs for different environments (dev/staging/prod)",
+        "Document required credentials in workflow metadata",
+        "Validate credential permissions before workflow activation"
+      ]
+    },
+    {
+      "pattern_name": "batch-processing-synthesis",
+      "description": "Implement batch processing for high-volume data operations",
+      "code_structure": "Batch Pattern:\n{\n  \"parameters\": {\n    \"batchSize\": 100,\n    \"options\": {\n      \"allowEmptyUpdates\": false\n    }\n  },\n  \"type\": \"n8n-nodes-base.splitInBatches\",\n  \"typeVersion\": 3\n}\n\nConnection Flow:\nData Source → Split In Batches → Process Batch → Aggregate Results\n                    ↓\n             (loops back for next batch)\n\nBatch Sizes:\n- API calls: 50-100 items\n- Database operations: 500-1000 items\n- AI processing: 10-20 items (token limits)",
+      "validation_checks": [
+        "Batch size is appropriate for operation type",
+        "Loop-back connection exists for batch continuation",
+        "Aggregate node collects results after batching",
+        "Error handling exists within batch processing",
+        "Progress tracking is implemented for long operations",
+        "Batch processing timeout is configured appropriately"
+      ]
+    },
+    {
+      "pattern_name": "expression-syntax-synthesis",
+      "description": "Proper n8n expression syntax for data access and transformation",
+      "code_structure": "Expression Patterns:\n\n1. Access current node data:\n   {{ $json.fieldName }}\n   {{ $json['Field With Spaces'] }}\n\n2. Access previous node data:\n   {{ $('Node Name').item.json.field }}\n   {{ $('Node Name').first().json.field }}\n   {{ $('Node Name').all() }}\n\n3. Environment variables:\n   {{ $env.VARIABLE_NAME }}\n\n4. Workflow metadata:\n   {{ $workflow.name }}\n   {{ $execution.id }}\n\n5. Conditionals:\n   {{ $json.status === 'success' ? 'OK' : 'Failed' }}\n\n6. Date/Time:\n   {{ new Date().toISOString() }}\n\n7. JSON operations:\n   {{ JSON.stringify($json) }}\n   {{ JSON.parse($json.stringField) }}",
+      "validation_checks": [
+        "Expressions use ={{ }} syntax (not {{ }} alone)",
+        "Field names with spaces use bracket notation ['field name']",
+        "No nested expressions (not supported in templates)",
+        "Date operations use JavaScript Date API",
+        "Ternary operators are used for simple conditionals",
+        "Complex logic is moved to Code nodes, not expressions",
+        "Form data accessed at root level: $json['fieldName']"
+      ],
+      "anti_patterns": [
+        "❌ {{ $('Node').item.json.formData['field'] }} - Form fields are at root, not nested",
+        "❌ {{ {{ nested }} }} - Nested expressions not supported",
+        "❌ {{ $credentials.api.key }} - Credentials not accessible in expressions",
+        "❌ $json.field (missing ={{ }}) - Won't evaluate as expression"
+      ]
+    },
+    {
+      "pattern_name": "workflow-metadata-synthesis",
+      "description": "Generate proper workflow metadata for documentation and discovery",
+      "code_structure": "{\n  \"name\": \"Descriptive Workflow Name\",\n  \"active\": false,\n  \"settings\": {\n    \"executionOrder\": \"v1\",\n    \"saveDataErrorExecution\": \"all\",\n    \"saveDataSuccessExecution\": \"all\",\n    \"saveManualExecutions\": true\n  },\n  \"versionId\": \"1\",\n  \"meta\": {\n    \"templateDescription\": \"Clear, concise description of workflow purpose and key features\"\n  },\n  \"id\": \"kebab-case-workflow-id\",\n  \"tags\": [\"category\", \"use-case\", \"integration\", \"pattern\"]\n}",
+      "validation_checks": [
+        "Name is descriptive and user-friendly",
+        "Active is false by default (safety)",
+        "Execution data retention is configured",
+        "Template description explains purpose and key features",
+        "ID uses kebab-case naming convention",
+        "Tags are relevant and aid in discovery",
+        "Version tracking is implemented"
+      ]
+    },
+    {
+      "pattern_name": "node-connection-synthesis",
+      "description": "Generate proper node connections with success and error paths",
+      "code_structure": "Connection Pattern:\n{\n  \"connections\": {\n    \"Node Name\": {\n      \"main\": [\n        [{\"node\": \"Next Node\", \"type\": \"main\", \"index\": 0}],  // Success path (main[0])\n        [{\"node\": \"Error Node\", \"type\": \"main\", \"index\": 0}]   // Error path (main[1])\n      ]\n    }\n  }\n}\n\nMulti-output Pattern (IF/Switch nodes):\n\"main\": [\n  [output1Connections],  // First output\n  [output2Connections],  // Second output\n  [output3Connections]   // Third output\n]\n\nEmpty Path (dead-end):\n\"main\": [[], []]  // No connections",
+      "validation_checks": [
+        "Connection references use node 'name' property, not 'id'",
+        "All referenced node names exist in nodes array",
+        "Main array indices match node output configuration",
+        "Error paths (main[1]) are defined for critical operations",
+        "No circular dependencies create infinite loops",
+        "All workflow paths eventually terminate",
+        "Index starts at 0 for node inputs"
+      ]
+    },
+    {
+      "pattern_name": "ai-model-integration-synthesis",
+      "description": "Integrate AI models (Claude, GPT, Gemini) with proper configuration",
+      "code_structure": "Claude/Anthropic Pattern:\n{\n  \"type\": \"@n8n/n8n-nodes-langchain.lmChatAnthropic\",\n  \"parameters\": {\n    \"model\": \"claude-sonnet-4-20250514\",\n    \"text\": \"={{ $json.prompt }}\"\n  },\n  \"credentials\": {\"anthropicApi\": {\"id\": \"2\", \"name\": \"Anthropic API\"}}\n}\n\nOpenAI/GPT Pattern:\n{\n  \"type\": \"@n8n/n8n-nodes-langchain.lmChatOpenAi\",\n  \"parameters\": {\n    \"model\": \"gpt-4\",\n    \"messages\": {\n      \"values\": [\n        {\"role\": \"system\", \"content\": \"System prompt\"},\n        {\"role\": \"user\", \"content\": \"={{ $json.query }}\"}\n      ]\n    },\n    \"options\": {\"temperature\": 0.7, \"maxTokens\": 1000}\n  }\n}\n\nGemini Pattern (HTTP Request):\n{\n  \"url\": \"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key={{ $env.GEMINI_API_KEY }}\",\n  \"method\": \"POST\",\n  \"contentType\": \"raw\",\n  \"body\": \"={{ JSON.stringify({contents: [{parts: [{text: $json.prompt}]}]}) }}\"\n}",
+      "validation_checks": [
+        "Model IDs are current and correct (see API_SKILLS_REFERENCE.md)",
+        "Temperature is between 0.0 (deterministic) and 1.0 (creative)",
+        "Token limits are set appropriately for use case",
+        "System prompts are clear and specific",
+        "Gemini uses query parameter for API key, not Bearer token",
+        "Response parsing handles provider-specific formats",
+        "Credentials are properly configured in n8n UI"
+      ],
+      "model_recommendations": {
+        "claude": {
+          "reasoning_tasks": "claude-opus-4-20250514",
+          "balanced": "claude-sonnet-4-20250514",
+          "fast_high_volume": "claude-3-5-haiku-20241022"
+        },
+        "openai": {
+          "complex_tasks": "gpt-4-turbo-2024-04-09",
+          "multimodal": "gpt-4o",
+          "cost_effective": "gpt-4o-mini"
+        },
+        "gemini": {
+          "production": "gemini-1.5-pro-latest",
+          "fast_cheap": "gemini-1.5-flash-latest",
+          "experimental": "gemini-2.0-flash-exp"
+        }
+      }
+    }
+  ],
+  "skill_prompt_structure": {
+    "required_sections": [
+      {
+        "section": "Role Definition",
+        "description": "Clear statement of the skill's purpose and expertise domain",
+        "example": "You are an expert n8n workflow architect specializing in error handling and retry patterns.",
+        "length": "2-3 sentences"
+      },
+      {
+        "section": "Capabilities",
+        "description": "Bulleted list of specific tasks the skill can perform",
+        "format": "- Action verb + specific capability\n- Include concrete examples where helpful",
+        "example": "- Generate exponential backoff retry logic\n- Implement error logging to database\n- Configure Slack/email error notifications"
+      },
+      {
+        "section": "Output Format",
+        "description": "Exact specification of expected output structure",
+        "format": "JSON schema or example output",
+        "requirements": [
+          "Must specify JSON structure if returning code",
+          "Include example outputs for clarity",
+          "Define required vs optional fields",
+          "Specify validation requirements"
+        ]
+      },
+      {
+        "section": "Constraints",
+        "description": "Explicit limitations and anti-patterns to avoid",
+        "example": "- Never use contentType: 'json' with expressions\n- Do not hardcode credentials\n- Avoid nested expressions in templates",
+        "importance": "Prevents common mistakes and ensures production quality"
+      },
+      {
+        "section": "Context Requirements",
+        "description": "What information the skill needs to function",
+        "example": "Required input:\n- Workflow purpose and trigger type\n- Expected data volume\n- Error handling preferences\n- Deployment environment (Cloud vs self-hosted)"
+      },
+      {
+        "section": "Validation Rules",
+        "description": "How the skill validates its output before returning",
+        "example": "- Validate all JSON is parseable\n- Check all node IDs are unique\n- Verify all connections reference existing nodes\n- Confirm credentials are properly structured"
+      }
+    ],
+    "best_practices": [
+      "Keep total prompt under 500 lines for token efficiency",
+      "Use concrete examples over abstract descriptions",
+      "Include anti-patterns (what NOT to do) alongside patterns",
+      "Reference actual working templates from workflow-templates/",
+      "Provide decision trees for conditional logic",
+      "Include troubleshooting guidance for common errors",
+      "Use consistent formatting (Markdown with code blocks)",
+      "Version prompts and track changes in git",
+      "Test prompts with edge cases before deployment",
+      "Include links to official n8n documentation"
+    ],
+    "skill_organization": {
+      "file_structure": ".claude/skills/n8n-{domain}/SKILL.md",
+      "naming_convention": "kebab-case, descriptive, domain-specific",
+      "metadata_header": "---\nname: skill-name\ndescription: One-line description\nmodel: sonnet|opus\nversion: 1.0.0\ntags: [n8n, category, use-case]\n---",
+      "documentation": "Each skill should include usage examples and expected inputs/outputs"
+    }
+  },
+  "error_handling": {
+    "pattern": "Skills should return structured error responses, not throw exceptions",
+    "error_response_format": {
+      "error": true,
+      "error_type": "validation|synthesis|template|credential",
+      "message": "Human-readable error description",
+      "details": {
+        "failed_checks": ["list of validation failures"],
+        "suggested_fixes": ["actionable remediation steps"],
+        "documentation_link": "URL to relevant docs"
+      },
+      "partial_output": "Include any valid partial results if applicable"
+    },
+    "error_types": {
+      "validation_error": {
+        "when": "User input is invalid or incomplete",
+        "action": "Return detailed validation failures with examples of correct format",
+        "example": "Missing required field 'workflow_name'. Expected format: 'My Workflow Name'"
+      },
+      "synthesis_error": {
+        "when": "Cannot generate valid workflow from requirements",
+        "action": "Explain why synthesis failed and what additional information is needed",
+        "example": "Cannot determine authentication method. Please specify API auth type: API Key, OAuth2, or Basic Auth"
+      },
+      "template_error": {
+        "when": "Template instantiation fails or template not found",
+        "action": "List available templates and explain requirements",
+        "example": "Template 'xyz' not found. Available templates: ai-agent-orchestration, api-sync-workflow, error-handling-retry"
+      },
+      "credential_error": {
+        "when": "Credential configuration is invalid",
+        "action": "Explain proper credential structure and provide examples",
+        "example": "Invalid credential reference. Use: {\\\"credentialType\\\": {\\\"id\\\": \\\"1\\\", \\\"name\\\": \\\"Descriptive Name\\\"}}"
+      }
+    },
+    "recovery_strategies": [
+      "Provide fallback to simpler template if complex synthesis fails",
+      "Return partial workflow with TODO comments for manual completion",
+      "Suggest alternative approaches when preferred method isn't possible",
+      "Include diagnostic information for debugging (which validation failed, why)",
+      "Link to relevant documentation sections for user self-service"
+    ]
+  },
+  "output_validation": {
+    "pre_return_checks": [
+      {
+        "check": "JSON syntax validity",
+        "method": "JSON.parse(output) must succeed without errors",
+        "severity": "critical"
+      },
+      {
+        "check": "Node ID uniqueness",
+        "method": "Set(nodes.map(n => n.id)).size === nodes.length",
+        "severity": "critical"
+      },
+      {
+        "check": "Connection integrity",
+        "method": "All connection node references exist in nodes array",
+        "severity": "critical"
+      },
+      {
+        "check": "Credential structure",
+        "method": "All credentials have {id, name} properties",
+        "severity": "high"
+      },
+      {
+        "check": "Expression syntax",
+        "method": "All expressions use ={{ }} format, no bare {{ }}",
+        "severity": "high"
+      },
+      {
+        "check": "HTTP contentType consistency",
+        "method": "If body has ={{ }}, contentType must be 'raw'",
+        "severity": "critical"
+      },
+      {
+        "check": "Code node return format",
+        "method": "functionCode contains 'return [{json:' pattern",
+        "severity": "high"
+      },
+      {
+        "check": "Position coordinates",
+        "method": "All nodes have position: [number, number]",
+        "severity": "medium"
+      },
+      {
+        "check": "Required workflow properties",
+        "method": "Workflow has name, nodes, connections, settings",
+        "severity": "critical"
+      },
+      {
+        "check": "No hardcoded secrets",
+        "method": "No API keys or passwords in plain text",
+        "severity": "critical"
+      }
+    ],
+    "validation_workflow": {
+      "step_1": "Parse JSON - if fails, return syntax error",
+      "step_2": "Schema validation - check all required properties exist",
+      "step_3": "Semantic validation - verify references, IDs, connections",
+      "step_4": "Security scan - check for hardcoded credentials",
+      "step_5": "Pattern compliance - verify n8n best practices",
+      "step_6": "Generate validation report with severity levels",
+      "step_7": "If critical errors, return error response; if warnings only, return with warnings list"
+    },
+    "validation_response_format": {
+      "valid": true,
+      "errors": [],
+      "warnings": [
+        {
+          "type": "missing_error_handling",
+          "severity": "medium",
+          "location": "HTTP Request node 'Fetch API Data'",
+          "message": "Consider adding continueOnFail: true for better error handling",
+          "suggestion": "Add continueOnFail: true to node parameters"
+        }
+      ],
+      "workflow": "...validated workflow JSON..."
+    }
+  },
+  "production_readiness_checklist": [
+    {
+      "category": "Error Handling",
+      "checks": [
+        "All HTTP requests have continueOnFail configured appropriately",
+        "Error paths exist for critical operations",
+        "Retry logic is implemented with exponential backoff",
+        "Error notifications are configured (Slack/email)",
+        "Error logging to database or monitoring system",
+        "Graceful degradation for non-critical failures"
+      ]
+    },
+    {
+      "category": "Security",
+      "checks": [
+        "No hardcoded API keys or credentials",
+        "Environment variables used for sensitive configuration",
+        "Credentials properly referenced by ID",
+        "Webhook endpoints are secured (authentication required)",
+        "No sensitive data in error messages or logs",
+        "OAuth2 used for third-party service authentication"
+      ]
+    },
+    {
+      "category": "Performance",
+      "checks": [
+        "Batch processing for large datasets (splitInBatches)",
+        "Appropriate timeout values configured",
+        "Database queries are optimized with limits",
+        "API rate limiting considered and implemented",
+        "Memory-efficient data transformations",
+        "Parallel processing where applicable"
+      ]
+    },
+    {
+      "category": "Monitoring",
+      "checks": [
+        "Execution data retention configured",
+        "Health check endpoints for critical workflows",
+        "Metrics logging (response times, success rates)",
+        "Alert thresholds defined and configured",
+        "Workflow execution history enabled",
+        "Regular review of failed executions"
+      ]
+    },
+    {
+      "category": "Documentation",
+      "checks": [
+        "Workflow name is descriptive and clear",
+        "Template description explains purpose and features",
+        "Node names are human-readable",
+        "Complex logic includes code comments",
+        "Tags are relevant for discovery",
+        "README or documentation file exists"
+      ]
+    },
+    {
+      "category": "Testing",
+      "checks": [
+        "Workflow tested with valid sample data",
+        "Edge cases tested (empty data, malformed input)",
+        "Error paths tested and verified",
+        "Credentials validated before activation",
+        "Load testing for high-volume scenarios",
+        "Manual execution successful before scheduling"
+      ]
+    }
+  ],
+  "template_library_reference": {
+    "available_templates": [
+      {
+        "id": "ai-agent-orchestration",
+        "file": "workflow-templates/ai-agent-orchestration.json",
+        "lines": 153,
+        "description": "Multi-agent orchestration with GPT-4 and Claude",
+        "use_cases": ["AI chatbots", "intelligent routing", "multi-model systems"],
+        "key_patterns": ["Intent classification", "LangChain integration", "Result aggregation"]
+      },
+      {
+        "id": "api-sync-workflow",
+        "file": "workflow-templates/api-sync-workflow.json",
+        "lines": 230,
+        "description": "Scheduled API synchronization with batch processing",
+        "use_cases": ["Data sync", "ETL pipelines", "third-party integrations"],
+        "key_patterns": ["Schedule triggers", "Batch processing", "Transform nodes"]
+      },
+      {
+        "id": "error-handling-retry",
+        "file": "workflow-templates/error-handling-retry.json",
+        "lines": 229,
+        "description": "Comprehensive error handling with exponential backoff",
+        "use_cases": ["Resilient workflows", "production systems", "critical operations"],
+        "key_patterns": ["Exponential backoff", "Error logging", "Slack alerts", "Database persistence"]
+      },
+      {
+        "id": "github-pr-review",
+        "file": "workflow-templates/github-pr-review.json",
+        "lines": 237,
+        "description": "Automated GitHub PR review using GPT-4",
+        "use_cases": ["Code review automation", "CI/CD pipelines", "developer productivity"],
+        "key_patterns": ["Webhook triggers", "GitHub API", "AI code analysis", "Automated comments"]
+      },
+      {
+        "id": "monitoring-health-check",
+        "file": "workflow-templates/monitoring-health-check.json",
+        "lines": 139,
+        "description": "System monitoring and health checks with alerts",
+        "use_cases": ["System monitoring", "uptime tracking", "alerting"],
+        "key_patterns": ["Periodic checks", "Response time tracking", "Conditional alerts", "Metrics logging"]
+      }
+    ],
+    "template_selection_guide": {
+      "question_flow": [
+        {
+          "question": "Does the workflow need AI/LLM integration?",
+          "yes": "Consider ai-agent-orchestration template",
+          "no": "Continue to next question"
+        },
+        {
+          "question": "Is this a scheduled data synchronization task?",
+          "yes": "Use api-sync-workflow template",
+          "no": "Continue to next question"
+        },
+        {
+          "question": "Is the primary concern error handling and resilience?",
+          "yes": "Use error-handling-retry template",
+          "no": "Continue to next question"
+        },
+        {
+          "question": "Does it integrate with GitHub for automation?",
+          "yes": "Use github-pr-review template as base",
+          "no": "Continue to next question"
+        },
+        {
+          "question": "Is this for monitoring and health checks?",
+          "yes": "Use monitoring-health-check template",
+          "no": "Build custom workflow using pattern library"
+        }
+      ]
+    }
+  },
+  "skill_development_workflow": {
+    "step_1_design": {
+      "action": "Define skill scope and domain",
+      "deliverable": "Skill specification document with use cases and examples"
+    },
+    "step_2_reference": {
+      "action": "Study existing templates and identify relevant patterns",
+      "deliverable": "List of patterns and anti-patterns for the domain"
+    },
+    "step_3_prompt": {
+      "action": "Write skill prompt following structure guidelines",
+      "deliverable": "SKILL.md file with all required sections"
+    },
+    "step_4_validate": {
+      "action": "Test skill with diverse inputs and edge cases",
+      "deliverable": "Test suite with expected outputs"
+    },
+    "step_5_document": {
+      "action": "Create usage documentation and examples",
+      "deliverable": "README with examples and troubleshooting guide"
+    },
+    "step_6_integrate": {
+      "action": "Add skill to repository and update skill registry",
+      "deliverable": "Git commit with skill and documentation"
+    }
+  },
+  "metadata": {
+    "version": "1.0.0",
+    "created": "2025-11-05",
+    "author": "claude-cc agent",
+    "repository": "/home/user/N8NWorkflow",
+    "templates_analyzed": 5,
+    "total_template_lines": 988,
+    "key_learnings_source": "LESSONS_LEARNED.md",
+    "best_practices_source": "BEST_PRACTICES.md",
+    "validation_status": "production-ready",
+    "last_updated": "2025-11-05"
+  }
+}
