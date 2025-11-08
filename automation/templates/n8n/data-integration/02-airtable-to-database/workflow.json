@@ -1,0 +1,54 @@
+{
+  "name": "Airtable to Database Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{"field": "cronExpression", "expression": "*/15 * * * *"}]
+        }
+      },
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "application": "={{ $env.AIRTABLE_BASE_ID }}",
+        "table": "Contacts",
+        "limit": 100,
+        "options": {}
+      },
+      "name": "Get Airtable Records",
+      "type": "n8n-nodes-base.airtable",
+      "credentials": {"airtableApi": {"id": "1", "name": "Airtable"}},
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const items = $input.all();\n\nreturn items.map(item => {\n  const fields = item.json.fields;\n  return {\n    json: {\n      airtable_id: item.json.id,\n      name: fields.Name || null,\n      email: fields.Email || null,\n      phone: fields.Phone || null,\n      company: fields.Company || null,\n      status: fields.Status || 'active',\n      created_time: item.json.createdTime,\n      synced_at: new Date().toISOString()\n    }\n  };\n});"
+      },
+      "name": "Transform Data",
+      "type": "n8n-nodes-base.code",
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO contacts (airtable_id, name, email, phone, company, status, created_time, synced_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (airtable_id) DO UPDATE SET name=EXCLUDED.name, email=EXCLUDED.email, phone=EXCLUDED.phone, company=EXCLUDED.company, status=EXCLUDED.status, synced_at=EXCLUDED.synced_at",
+        "additionalFields": {"queryParameters": "={{ $json.airtable_id }},={{ $json.name }},={{ $json.email }},={{ $json.phone }},={{ $json.company }},={{ $json.status }},={{ $json.created_time }},={{ $json.synced_at }}"}
+      },
+      "name": "Upsert to Database",
+      "type": "n8n-nodes-base.postgres",
+      "credentials": {"postgres": {"id": "1", "name": "PostgreSQL"}},
+      "position": [850, 300]
+    }
+  ],
+  "connections": {
+    "Every 15 Minutes": {"main": [[{"node": "Get Airtable Records", "type": "main", "index": 0}]]},
+    "Get Airtable Records": {"main": [[{"node": "Transform Data", "type": "main", "index": 0}]]},
+    "Transform Data": {"main": [[{"node": "Upsert to Database", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "tags": ["data-integration", "airtable", "database"],
+  "versionId": "1.0.0"
+}

@@ -1,0 +1,68 @@
+{
+  "name": "AI Email Response Generator",
+  "nodes": [
+    {
+      "parameters": {"protocol": "imap", "options": {"customEmailConfig": "={{ $env.IMAP_CONFIG }}"}},
+      "name": "Email Trigger",
+      "type": "n8n-nodes-base.emailReadImap",
+      "credentials": {"imap": {"id": "1", "name": "IMAP"}},
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "messages": {
+          "messages": [
+            {"role": "system", "content": "You are a professional customer support agent. Analyze the email and generate a helpful, concise response. Match the tone of the email. Be friendly and professional."},
+            {"role": "user", "content": "Subject: {{ $json.subject }}\\n\\nFrom: {{ $json.from }}\\n\\nEmail:\\n{{ $json.text }}\\n\\nGenerate an appropriate response."}
+          ]
+        },
+        "options": {"temperature": 0.7, "maxTokens": 300}
+      },
+      "name": "Generate Response with GPT-4",
+      "type": "n8n-nodes-base.openAi",
+      "credentials": {"openAiApi": {"id": "2", "name": "OpenAI"}},
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "return {\n  json: {\n    to: $('Email Trigger').item.json.from,\n    subject: 'Re: ' + $('Email Trigger').item.json.subject,\n    body: $json.message.content,\n    originalEmail: $('Email Trigger').item.json.text,\n    generatedAt: new Date().toISOString()\n  }\n};"
+      },
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SUPPORT_EMAIL }}",
+        "toEmail": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "text": "={{ $json.body }}",
+        "options": {}
+      },
+      "name": "Send Email Response",
+      "type": "n8n-nodes-base.emailSend",
+      "credentials": {"smtp": {"id": "3", "name": "SMTP"}},
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO email_responses (from_email, subject, original_email, generated_response, sent_at) VALUES ($1, $2, $3, $4, $5)",
+        "additionalFields": {"queryParameters": "={{ $json.to }},={{ $json.subject }},={{ $json.originalEmail }},={{ $json.body }},={{ $json.generatedAt }}"}
+      },
+      "name": "Log Response",
+      "type": "n8n-nodes-base.postgres",
+      "credentials": {"postgres": {"id": "1", "name": "PostgreSQL"}},
+      "position": [1050, 300]
+    }
+  ],
+  "connections": {
+    "Email Trigger": {"main": [[{"node": "Generate Response with GPT-4", "type": "main", "index": 0}]]},
+    "Generate Response with GPT-4": {"main": [[{"node": "Format Response", "type": "main", "index": 0}]]},
+    "Format Response": {"main": [[{"node": "Send Email Response", "type": "main", "index": 0}]]},
+    "Send Email Response": {"main": [[{"node": "Log Response", "type": "main", "index": 0}]]}
+  },
+  "tags": ["ai", "email", "customer-support", "gpt-4"],
+  "versionId": "1.0.0"
+}
