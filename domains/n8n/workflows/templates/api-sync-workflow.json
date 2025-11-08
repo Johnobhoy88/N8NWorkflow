@@ -1,0 +1,234 @@
+{
+  "name": "API Sync Workflow Template",
+  "_architecture": "Webhook Trigger → Fetch Data (API) → Transform → Store (Database). Linear flow with error handling at API call.",
+  "_connections": "Success path: API → Transform → Database. Error path: API → Error Handler. Both paths complete cleanly.",
+  "_outputNodes": ["Database", "Webhook Response"],
+  "_pattern": "Webhook → HTTP Request → Code (Transform) → Database/Response",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */4 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger (Every 4 hours)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SOURCE_API_URL }}/data",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "GET",
+        "options": {
+          "timeout": 30000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      },
+      "id": "fetch-source-data",
+      "name": "Fetch Source API Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [470, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "3",
+          "name": "Source API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const items = $input.all();\nconst transformed = items.map(item => {\n  return {\n    json: {\n      id: item.json.id,\n      name: item.json.name,\n      status: item.json.status || 'active',\n      lastSync: new Date().toISOString(),\n      metadata: {\n        source: 'api-sync',\n        version: '1.0'\n      }\n    }\n  };\n});\nreturn transformed;"
+      },
+      "id": "transform-data",
+      "name": "Transform Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.items.length }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "check-data-exists",
+      "name": "Check Data Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 100,
+        "options": {
+          "allowEmptyUpdates": false
+        }
+      },
+      "id": "batch-processor",
+      "name": "Batch Processor",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1130, 200]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.TARGET_API_URL }}/sync",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "data",
+              "value": "={{ $json }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "retry": {
+              "maxRetries": 3,
+              "retryInterval": 5000
+            }
+          }
+        }
+      },
+      "id": "sync-to-target",
+      "name": "Sync to Target API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1350, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "4",
+          "name": "Target API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "aggregateResults",
+        "options": {
+          "includeStatistics": true
+        }
+      },
+      "id": "aggregate-results",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [1570, 200]
+    },
+    {
+      "parameters": {
+        "channelId": "={{ $env.SLACK_CHANNEL_ID }}",
+        "text": "=API Sync completed successfully!\nRecords synced: {{ $json.count }}\nTimestamp: {{ $json.timestamp }}",
+        "otherOptions": {}
+      },
+      "id": "notify-success",
+      "name": "Notify Success",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [1790, 200],
+      "credentials": {
+        "slackApi": {
+          "id": "5",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "errorMessage": "API sync failed",
+        "options": {}
+      },
+      "id": "error-handler",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [910, 500]
+    },
+    {
+      "parameters": {
+        "channelId": "={{ $env.SLACK_CHANNEL_ID }}",
+        "text": "=⚠️ API Sync Error\nError: {{ $json.error.message }}\nTimestamp: {{ new Date().toISOString() }}",
+        "otherOptions": {}
+      },
+      "id": "notify-error",
+      "name": "Notify Error",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [1130, 500],
+      "credentials": {
+          "slackApi": {
+          "id": "5",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Every 4 hours)": {
+      "main": [[{"node": "Fetch Source API Data", "type": "main", "index": 0}]]
+    },
+    "Fetch Source API Data": {
+      "main": [[{"node": "Transform Data", "type": "main", "index": 0}]]
+    },
+    "Transform Data": {
+      "main": [[{"node": "Check Data Exists", "type": "main", "index": 0}]]
+    },
+    "Check Data Exists": {
+      "main": [
+        [{"node": "Batch Processor", "type": "main", "index": 0}],
+        []
+      ]
+    },
+    "Batch Processor": {
+      "main": [[{"node": "Sync to Target API", "type": "main", "index": 0}]]
+    },
+    "Sync to Target API": {
+      "main": [[{"node": "Aggregate Results", "type": "main", "index": 0}]]
+    },
+    "Aggregate Results": {
+      "main": [[{"node": "Notify Success", "type": "main", "index": 0}]]
+    },
+    "Error Handler": {
+      "main": [[{"node": "Notify Error", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  },
+  "versionId": "1",
+  "meta": {
+    "templateDescription": "Scheduled API synchronization workflow that fetches data from a source API, transforms it, and syncs to a target API in batches. Includes error handling, retry logic, and Slack notifications."
+  },
+  "id": "api-sync-workflow",
+  "tags": ["API", "sync", "scheduled", "batch-processing", "notifications"]
+}

@@ -1,0 +1,411 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2025-11-05",
+  "totalNodes": 25,
+  "nodes": [
+    {
+      "type": "n8n-nodes-base.webhook",
+      "name": "Webhook",
+      "description": "Receive HTTP POST/GET requests",
+      "nodeVersion": 2,
+      "versions": ["1", "2"],
+      "requiredFields": ["path", "method"],
+      "optionalFields": ["responseMode", "options", "options.maxBodySize"],
+      "defaultVersion": "2",
+      "credentials": false,
+      "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"],
+      "responseModes": ["onReceived", "lastNode", "responseNode"],
+      "config": {
+        "path": "webhook-endpoint",
+        "method": "POST",
+        "responseMode": "onReceived"
+      },
+      "relatedPatterns": ["webhook-body-access", "webhook-method-validation"],
+      "notes": "Data accessible via $json.body for payloads, $json directly for query params"
+    },
+    {
+      "type": "n8n-nodes-base.httpRequest",
+      "name": "HTTP Request",
+      "description": "Make HTTP requests to APIs",
+      "nodeVersion": "4.3",
+      "versions": ["2", "2.4", "4", "4.1", "4.2", "4.3"],
+      "requiredFields": ["url", "method"],
+      "optionalFields": ["authentication", "headers", "body", "contentType", "timeout", "returnFullResponse"],
+      "defaultVersion": "4.3",
+      "credentials": ["basic", "oauth2", "digestAuth", "apiKey"],
+      "contentTypes": ["json", "raw", "form", "form-urlencoded"],
+      "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
+      "maxTimeout": 300000,
+      "defaultTimeout": 30000,
+      "relatedPatterns": ["http-request-raw-body", "gemini-api-auth", "retry-logic-api", "pagination-api-calls"],
+      "config": {
+        "url": "https://api.example.com/endpoint",
+        "method": "POST",
+        "contentType": "raw",
+        "body": "={{ JSON.stringify({key: value}) }}",
+        "timeout": 30000
+      }
+    },
+    {
+      "type": "n8n-nodes-base.formTrigger",
+      "name": "Form Trigger",
+      "description": "Accept form submissions",
+      "nodeVersion": "2.3",
+      "versions": ["1", "2", "2.1", "2.2", "2.3"],
+      "requiredFields": ["formFields"],
+      "optionalFields": ["path", "formTitle", "formDescription", "responseMode"],
+      "defaultVersion": "2.3",
+      "credentials": false,
+      "fieldTypes": ["text", "textarea", "email", "number", "checkbox", "dropdown", "multiSelect"],
+      "responseModes": ["onReceived", "lastNode"],
+      "relatedPatterns": ["form-data-access", "form-field-required"],
+      "config": {
+        "path": "form-endpoint",
+        "formTitle": "My Form",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Email",
+              "fieldType": "email",
+              "requiredField": true
+            }
+          ]
+        },
+        "responseMode": "onReceived"
+      },
+      "notes": "Form data is at $json['fieldLabel'] level, not nested"
+    },
+    {
+      "type": "n8n-nodes-base.code",
+      "name": "Code",
+      "description": "Execute JavaScript code",
+      "nodeVersion": "2",
+      "versions": ["1", "2"],
+      "requiredFields": ["jsCode"],
+      "optionalFields": ["language"],
+      "languages": ["javaScript"],
+      "defaultVersion": "2",
+      "credentials": false,
+      "variablesAvailable": ["$json", "$node", "$items", "items"],
+      "relatedPatterns": ["code-node-return-format", "no-hardcoded-secrets", "set-node-vs-code"],
+      "config": {
+        "jsCode": "return [{json: {field: value}}]"
+      },
+      "notes": "MUST return [{json: {...}}] format. Async operations not supported in standard mode"
+    },
+    {
+      "type": "n8n-nodes-base.gmail",
+      "name": "Gmail",
+      "description": "Send/receive emails via Gmail",
+      "nodeVersion": "2.1",
+      "versions": ["1", "2", "2.1"],
+      "requiredFields": ["operation"],
+      "operationSpecific": {
+        "send": ["sendTo", "subject", "message"],
+        "reply": ["messageId", "message"],
+        "getThread": ["threadId"]
+      },
+      "operations": ["send", "reply", "getThread", "markAsRead", "trash"],
+      "defaultVersion": "2.1",
+      "credentials": ["gmailOAuth2"],
+      "messageTypes": ["html", "text"],
+      "relatedPatterns": ["gmail-oauth2", "no-hardcoded-secrets"],
+      "config": {
+        "operation": "send",
+        "sendTo": "recipient@example.com",
+        "subject": "Subject Line",
+        "message": "Email body",
+        "messageType": "html"
+      },
+      "notes": "MUST use OAuth2 on n8n Cloud (SMTP blocked). Requires Gmail credential setup in n8n UI"
+    },
+    {
+      "type": "n8n-nodes-base.if",
+      "name": "IF",
+      "description": "Conditional branching",
+      "nodeVersion": "2.2",
+      "versions": ["1", "2", "2.1", "2.2"],
+      "requiredFields": ["conditions"],
+      "optionalFields": ["combineOperation"],
+      "defaultVersion": "2.2",
+      "operators": ["equals", "notEquals", "gt", "gte", "lt", "lte", "contains", "notContains", "startsWith", "endsWith", "isEmpty", "isNotEmpty", "matches", "notMatches", "true", "false"],
+      "combineOperations": ["all", "any"],
+      "credentials": false,
+      "relatedPatterns": ["if-node-conditions", "error-routing"],
+      "config": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.field}}",
+              "operator": {"type": "string", "operation": "equals"},
+              "rightValue": "expectedValue"
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "notes": "main[0] = true path, main[1] = false path"
+    },
+    {
+      "type": "n8n-nodes-base.switch",
+      "name": "Switch",
+      "description": "Multiple conditional branches",
+      "nodeVersion": "3.2",
+      "versions": ["1", "2", "3", "3.1", "3.2"],
+      "requiredFields": ["cases"],
+      "defaultVersion": "3.2",
+      "credentials": false,
+      "relatedPatterns": ["switch-node-routing"],
+      "config": {
+        "cases": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "cases": [
+            {
+              "caseLabel": "Case 1",
+              "condition": {
+                "leftValue": "={{$json.field}}",
+                "operator": {"type": "string", "operation": "equals"},
+                "rightValue": "value1"
+              }
+            }
+          ]
+        },
+        "fallbackOutput": 0
+      },
+      "notes": "Use for 3+ conditions instead of IF"
+    },
+    {
+      "type": "n8n-nodes-base.splitInBatches",
+      "name": "Split In Batches",
+      "description": "Process data in batches",
+      "nodeVersion": "3.1",
+      "versions": ["1", "2", "3", "3.1"],
+      "requiredFields": ["batchSize"],
+      "optionalFields": ["maxIterations"],
+      "defaultVersion": "3.1",
+      "credentials": false,
+      "relatedPatterns": ["batch-processing", "split-in-batches-loop"],
+      "config": {
+        "batchSize": 50,
+        "maxIterations": 1000
+      },
+      "notes": "Connect output back to input for loop processing"
+    },
+    {
+      "type": "n8n-nodes-base.set",
+      "name": "Set",
+      "description": "Set/map data fields",
+      "nodeVersion": "3",
+      "versions": ["1", "2", "3"],
+      "requiredFields": [],
+      "credentials": false,
+      "relatedPatterns": ["set-node-vs-code"],
+      "config": {
+        "values": {
+          "string": [
+            {
+              "name": "newField",
+              "value": "={{ $json.oldField }}"
+            }
+          ]
+        },
+        "options": {
+          "keepOnlySet": false
+        }
+      },
+      "notes": "More performant than Code for simple transformations"
+    },
+    {
+      "type": "n8n-nodes-base.wait",
+      "name": "Wait",
+      "description": "Delay workflow execution",
+      "nodeVersion": "1.2",
+      "versions": ["1", "1.1", "1.2"],
+      "requiredFields": ["waitType"],
+      "waitTypes": ["time", "date"],
+      "defaultVersion": "1.2",
+      "credentials": false,
+      "relatedPatterns": ["wait-node-scheduling"],
+      "config": {
+        "waitType": "time",
+        "amount": 5,
+        "unit": "seconds"
+      }
+    },
+    {
+      "type": "n8n-nodes-base.postgres",
+      "name": "Postgres",
+      "description": "Connect to PostgreSQL database",
+      "nodeVersion": "2.13",
+      "versions": ["1", "2", "2.1", "2.2", "2.13"],
+      "requiredFields": ["operation"],
+      "operations": ["select", "insert", "update", "delete", "execute"],
+      "defaultVersion": "2.13",
+      "credentials": ["postgresConfigType"],
+      "relatedPatterns": ["database-connection-pool"],
+      "config": {
+        "operation": "select",
+        "schema": "public",
+        "table": "users",
+        "limit": 100
+      }
+    },
+    {
+      "type": "n8n-nodes-base.googleSheets",
+      "name": "Google Sheets",
+      "description": "Read/write Google Sheets",
+      "nodeVersion": "4",
+      "versions": ["1", "2", "3", "4"],
+      "requiredFields": ["operation"],
+      "operations": ["append", "delete", "read", "update"],
+      "defaultVersion": "4",
+      "credentials": ["googleSheetsOAuth2"],
+      "config": {
+        "operation": "read",
+        "sheetId": "{{ $json.spreadsheetId }}",
+        "range": "A1:Z1000"
+      }
+    },
+    {
+      "type": "n8n-nodes-base.slack",
+      "name": "Slack",
+      "description": "Send messages to Slack",
+      "nodeVersion": "2",
+      "versions": ["1", "2"],
+      "requiredFields": ["operation"],
+      "operations": ["message", "reaction", "user"],
+      "defaultVersion": "2",
+      "credentials": ["slackApi"],
+      "config": {
+        "operation": "message",
+        "channel": "#general",
+        "text": "Message content"
+      }
+    },
+    {
+      "type": "n8n-nodes-base.schedule",
+      "name": "Schedule",
+      "description": "Trigger workflow on schedule",
+      "nodeVersion": "1.1",
+      "versions": ["1", "1.1"],
+      "requiredFields": ["rule"],
+      "ruleTypes": ["cron", "everyDay", "everyHour"],
+      "defaultVersion": "1.1",
+      "credentials": false,
+      "relatedPatterns": ["workflow-version-control"],
+      "config": {
+        "rule": "0 9 * * *",
+        "timezone": "America/New_York"
+      },
+      "notes": "Uses cron syntax"
+    },
+    {
+      "type": "n8n-nodes-base.merge",
+      "name": "Merge",
+      "description": "Merge multiple inputs",
+      "nodeVersion": "2.1",
+      "versions": ["1", "2", "2.1"],
+      "requiredFields": ["mode"],
+      "modes": ["append", "merge", "simpleMerge", "combine"],
+      "defaultVersion": "2.1",
+      "credentials": false
+    },
+    {
+      "type": "n8n-nodes-base.dateTime",
+      "name": "Date & Time",
+      "description": "Format and manipulate dates",
+      "nodeVersion": "2",
+      "versions": ["1", "2"],
+      "requiredFields": [],
+      "operations": ["format", "calculate", "parse"],
+      "defaultVersion": "2",
+      "credentials": false,
+      "relatedPatterns": ["timestamp-tracking"]
+    },
+    {
+      "type": "n8n-nodes-base.function",
+      "name": "Function",
+      "description": "Transform data with function",
+      "nodeVersion": "1",
+      "versions": ["1"],
+      "requiredFields": [],
+      "defaultVersion": "1",
+      "credentials": false,
+      "notes": "Simpler than Code node for basic operations"
+    },
+    {
+      "type": "n8n-nodes-base.filter",
+      "name": "Filter",
+      "description": "Filter array items",
+      "nodeVersion": "1.1",
+      "versions": ["1", "1.1"],
+      "requiredFields": ["conditions"],
+      "defaultVersion": "1.1",
+      "credentials": false
+    },
+    {
+      "type": "n8n-nodes-base.aggregate",
+      "name": "Aggregate",
+      "description": "Aggregate multiple items",
+      "nodeVersion": "1",
+      "versions": ["1"],
+      "requiredFields": ["aggregateOperation"],
+      "defaultVersion": "1",
+      "credentials": false
+    },
+    {
+      "type": "n8n-nodes-base.noOp",
+      "name": "No Operation",
+      "description": "Pass through data unchanged",
+      "nodeVersion": "1",
+      "versions": ["1"],
+      "requiredFields": [],
+      "defaultVersion": "1",
+      "credentials": false,
+      "notes": "Useful for visually separating workflow sections"
+    },
+    {
+      "type": "n8n-nodes-base.stopAndError",
+      "name": "Stop and Error",
+      "description": "Stop workflow and error",
+      "nodeVersion": "1",
+      "versions": ["1"],
+      "requiredFields": ["errorMessage"],
+      "defaultVersion": "1",
+      "credentials": false,
+      "relatedPatterns": ["error-notification-user"]
+    },
+    {
+      "type": "n8n-nodes-base.error",
+      "name": "Error",
+      "description": "Catch and handle errors",
+      "nodeVersion": "1",
+      "versions": ["1"],
+      "requiredFields": [],
+      "defaultVersion": "1",
+      "credentials": false,
+      "relatedPatterns": ["continue-on-fail", "error-routing"]
+    },
+    {
+      "type": "n8n-nodes-base.respondToWebhook",
+      "name": "Respond to Webhook",
+      "description": "Send HTTP response",
+      "nodeVersion": "1.1",
+      "versions": ["1", "1.1"],
+      "requiredFields": ["responseCode"],
+      "defaultVersion": "1.1",
+      "credentials": false,
+      "config": {
+        "responseCode": 200,
+        "responseBody": "{{ JSON.stringify({success: true}) }}"
+      }
+    }
+  ]
+}

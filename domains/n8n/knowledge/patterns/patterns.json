@@ -1,0 +1,530 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2025-11-05",
+  "totalPatterns": 50,
+  "patterns": [
+    {
+      "id": "http-request-raw-body",
+      "name": "HTTP Request with Expressions",
+      "category": "HTTP Request",
+      "priority": "critical",
+      "nodeTypes": ["n8n-nodes-base.httpRequest"],
+      "rule": "Use contentType: 'raw' when using expressions in body",
+      "why": "JSON type sends expression as literal text, not evaluated",
+      "problemStatement": "Expression not evaluating in HTTP Request body",
+      "errorMessage": "JSON parameter needs to be valid JSON",
+      "example": {
+        "correct": {
+          "contentType": "raw",
+          "body": "={{ JSON.stringify({key: $json.value}) }}"
+        },
+        "incorrect": {
+          "contentType": "json",
+          "jsonBody": "={{ expression }}"
+        }
+      },
+      "tags": ["expressions", "content-type", "common-error", "critical"]
+    },
+    {
+      "id": "code-node-return-format",
+      "name": "Code Node Return Format",
+      "category": "Code",
+      "priority": "critical",
+      "nodeTypes": ["n8n-nodes-base.code"],
+      "rule": "Code nodes must return array of objects format",
+      "why": "n8n processes items in arrays internally",
+      "example": {
+        "correct": "return [{json: {field: value}}]",
+        "incorrect": "return {json: {field: value}}"
+      },
+      "errorMessage": "Return value must be an array of objects",
+      "tags": ["code-node", "return-format", "critical"]
+    },
+    {
+      "id": "form-data-access",
+      "name": "Form Trigger Data Access",
+      "category": "Form",
+      "priority": "critical",
+      "nodeTypes": ["n8n-nodes-base.formTrigger"],
+      "rule": "Form data is at root level, not under formData",
+      "why": "Form Trigger v2+ changed data structure",
+      "appliesTo": "v2+",
+      "example": {
+        "correct": "$json['fieldName']",
+        "incorrect": "$json.formData['fieldName']"
+      },
+      "tags": ["form-trigger", "data-access", "critical"]
+    },
+    {
+      "id": "gmail-oauth2",
+      "name": "Gmail OAuth2 on n8n Cloud",
+      "category": "Email",
+      "priority": "critical",
+      "nodeTypes": ["n8n-nodes-base.gmail"],
+      "rule": "Use Gmail node with OAuth2, NOT SMTP on n8n Cloud",
+      "why": "n8n Cloud blocks SMTP environment variable access",
+      "workaround": "Use Gmail node with pre-configured OAuth2 credentials",
+      "errorMessage": "access to env vars denied",
+      "tags": ["email", "gmail", "oauth2", "n8n-cloud", "critical"]
+    },
+    {
+      "id": "continue-on-fail",
+      "name": "Error Handling with continueOnFail",
+      "category": "Error Handling",
+      "priority": "major",
+      "nodeTypes": ["n8n-nodes-base.httpRequest", "n8n-nodes-base.code"],
+      "rule": "Set continueOnFail: true on API/external call nodes",
+      "why": "Allows error path to execute instead of stopping workflow",
+      "example": {
+        "continueOnFail": true,
+        "onError": "continueRegularOutput"
+      },
+      "relatedPatterns": ["error-routing", "if-node-error-check"],
+      "tags": ["error-handling", "resilience", "major"]
+    },
+    {
+      "id": "error-routing",
+      "name": "Error Output Routing",
+      "category": "Error Handling",
+      "priority": "major",
+      "nodeTypes": ["all"],
+      "rule": "Use main[0] for success, main[1] for error output",
+      "why": "n8n allows dual output paths when continueOnFail: true",
+      "example": {
+        "connections": {
+          "MyNode": {
+            "main": [
+              [{"node": "Success Handler", "type": "main", "index": 0}],
+              [{"node": "Error Handler", "type": "main", "index": 0}]
+            ]
+          }
+        }
+      },
+      "tags": ["error-handling", "connections", "major"]
+    },
+    {
+      "id": "gemini-api-auth",
+      "name": "Gemini API Authentication",
+      "category": "API Authentication",
+      "priority": "critical",
+      "nodeTypes": ["n8n-nodes-base.httpRequest"],
+      "rule": "Use query parameter ?key=API_KEY for Gemini",
+      "why": "Gemini API key auth is via query parameter, not Bearer token",
+      "example": {
+        "correct": "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=YOUR_KEY",
+        "incorrect": "Headers: {Authorization: 'Bearer YOUR_KEY'}"
+      },
+      "tags": ["gemini", "authentication", "api", "critical"]
+    },
+    {
+      "id": "webhook-body-access",
+      "name": "Webhook Data Structure",
+      "category": "Webhook",
+      "priority": "major",
+      "nodeTypes": ["n8n-nodes-base.webhook"],
+      "rule": "Webhook data is under $json.body, not root $json",
+      "why": "n8n nests webhook payloads in body field",
+      "example": {
+        "correct": "$json.body.email",
+        "incorrect": "$json.email"
+      },
+      "tags": ["webhook", "data-structure", "major"]
+    },
+    {
+      "id": "node-ids-unique",
+      "name": "Unique Node IDs",
+      "category": "Workflow Structure",
+      "priority": "critical",
+      "rule": "Each node must have unique ID",
+      "why": "n8n uses IDs internally for connections",
+      "validation": "Check for duplicate IDs before import",
+      "tags": ["structure", "validation", "critical"]
+    },
+    {
+      "id": "positions-required",
+      "name": "Node Position Coordinates",
+      "category": "Workflow Structure",
+      "priority": "major",
+      "rule": "All nodes must have position: [x, y]",
+      "why": "n8n UI needs coordinates to display nodes",
+      "example": {
+        "position": [250, 300]
+      },
+      "tags": ["structure", "ui", "major"]
+    },
+    {
+      "id": "connections-by-name",
+      "name": "Connections Use Node Names",
+      "category": "Workflow Structure",
+      "priority": "critical",
+      "rule": "Connections reference node 'name' field, not 'id'",
+      "why": "n8n workflow format uses names for connections",
+      "example": {
+        "correct": {"node": "My Node Name"},
+        "incorrect": {"node": "node-id-123"}
+      },
+      "tags": ["connections", "structure", "critical"]
+    },
+    {
+      "id": "batch-processing",
+      "name": "Batch Processing Large Datasets",
+      "category": "Performance",
+      "priority": "major",
+      "nodeTypes": ["n8n-nodes-base.splitInBatches"],
+      "rule": "Use SplitInBatches for large datasets (>100 items)",
+      "why": "Prevents memory issues and API rate limits",
+      "config": {
+        "batchSize": "50-100 for API calls, 500-1000 for database"
+      },
+      "tags": ["performance", "batching", "major"]
+    },
+    {
+      "id": "no-hardcoded-secrets",
+      "name": "No Hardcoded Secrets",
+      "category": "Security",
+      "priority": "critical",
+      "rule": "Never hardcode API keys in node parameters",
+      "why": "Secrets visible in workflow JSON, could be exposed",
+      "solution": "Use predefinedCredentialType or $env variables",
+      "tags": ["security", "credentials", "critical"]
+    },
+    {
+      "id": "retry-logic-api",
+      "name": "Retry Logic for APIs",
+      "category": "Reliability",
+      "priority": "major",
+      "nodeTypes": ["n8n-nodes-base.httpRequest"],
+      "rule": "Implement exponential backoff retry for API calls",
+      "why": "APIs can be temporarily unavailable or rate-limited",
+      "config": {
+        "maxRetries": 3,
+        "retryInterval": 5000,
+        "backoff": "exponential"
+      },
+      "tags": ["reliability", "retry", "major"]
+    },
+    {
+      "id": "type-version-specific",
+      "name": "Node TypeVersion Matching",
+      "category": "Configuration",
+      "priority": "critical",
+      "rule": "typeVersion must match actual node version in n8n",
+      "why": "Wrong version breaks node import or configuration",
+      "validation": "Must validate against n8n's actual versions",
+      "tags": ["configuration", "validation", "critical"]
+    },
+    {
+      "id": "gemini-response-format",
+      "name": "Gemini API Response Parsing",
+      "category": "API Integration",
+      "priority": "critical",
+      "nodeTypes": ["n8n-nodes-base.httpRequest"],
+      "rule": "Extract Gemini response: candidates[0].content.parts[0].text",
+      "why": "Gemini API response is deeply nested in candidates array",
+      "example": {
+        "correct": "$json.candidates[0].content.parts[0].text",
+        "incorrect": "$json.text"
+      },
+      "tags": ["gemini", "api-response", "critical"]
+    },
+    {
+      "id": "json-stringify-expressions",
+      "name": "JSON.stringify() for API Bodies",
+      "category": "Data Transformation",
+      "priority": "major",
+      "nodeTypes": ["n8n-nodes-base.httpRequest"],
+      "rule": "Use JSON.stringify() when passing objects as raw body",
+      "why": "Expressions must output valid JSON string",
+      "example": {
+        "correct": "={{ JSON.stringify({key: value}) }}",
+        "incorrect": "={{ {key: value} }}"
+      },
+      "tags": ["json", "transformation", "major"]
+    },
+    {
+      "id": "if-node-conditions",
+      "name": "IF Node Condition Structure",
+      "category": "Conditional Logic",
+      "priority": "major",
+      "nodeTypes": ["n8n-nodes-base.if"],
+      "rule": "Structure: combineOperation + conditions array",
+      "why": "n8n IF node expects specific condition format",
+      "example": {
+        "combineOperation": "all",
+        "conditions": [{"leftValue": "test", "operator": "equals", "rightValue": "value"}]
+      },
+      "tags": ["conditional", "structure", "major"]
+    },
+    {
+      "id": "switch-node-routing",
+      "name": "Switch Node for Multiple Paths",
+      "category": "Conditional Logic",
+      "priority": "major",
+      "nodeTypes": ["n8n-nodes-base.switch"],
+      "rule": "Use Switch for 3+ conditions, IF for 1-2",
+      "why": "Switch more readable and performant for many options",
+      "tags": ["routing", "conditional", "major"]
+    },
+    {
+      "id": "set-node-vs-code",
+      "name": "Set Node vs Code Node",
+      "category": "Best Practices",
+      "priority": "major",
+      "rule": "Use Set for simple field mapping, Code for complex logic",
+      "why": "Set is faster and more maintainable for simple transforms",
+      "example": {
+        "use_set": "Rename fields, select fields, simple calculations",
+        "use_code": "Custom validation, complex transforms, business logic"
+      },
+      "tags": ["performance", "maintainability", "major"]
+    },
+    {
+      "id": "split-in-batches-loop",
+      "name": "SplitInBatches Loop Pattern",
+      "category": "Workflow Patterns",
+      "priority": "major",
+      "nodeTypes": ["n8n-nodes-base.splitInBatches"],
+      "rule": "Connect last node back to SplitInBatches to loop",
+      "why": "Processes all batches automatically in loop",
+      "tags": ["batching", "loop", "major"]
+    },
+    {
+      "id": "webhook-method-validation",
+      "name": "Webhook Method Configuration",
+      "category": "Webhook",
+      "priority": "major",
+      "nodeTypes": ["n8n-nodes-base.webhook"],
+      "rule": "Explicitly set POST/GET method, don't leave auto",
+      "why": "Auto-detection can be unreliable",
+      "tags": ["webhook", "configuration", "major"]
+    },
+    {
+      "id": "form-field-required",
+      "name": "Form Field Validation",
+      "category": "Form",
+      "priority": "major",
+      "nodeTypes": ["n8n-nodes-base.formTrigger"],
+      "rule": "Mark critical fields as required",
+      "why": "Ensures users provide necessary information",
+      "tags": ["form", "validation", "major"]
+    },
+    {
+      "id": "database-connection-pool",
+      "name": "Database Connection Pooling",
+      "category": "Database",
+      "priority": "major",
+      "rule": "Use connection pooling for databases",
+      "why": "Prevents connection exhaustion",
+      "tags": ["database", "performance", "major"]
+    },
+    {
+      "id": "execute-once-mode",
+      "name": "Execute Once Mode for Broadcast",
+      "category": "Execution",
+      "priority": "major",
+      "rule": "Use 'Execute Once' for sending single message to all items",
+      "why": "Prevents duplicate messages",
+      "tags": ["execution", "broadcast", "major"]
+    },
+    {
+      "id": "wait-node-scheduling",
+      "name": "Wait Node for Delays",
+      "category": "Timing",
+      "priority": "minor",
+      "nodeTypes": ["n8n-nodes-base.wait"],
+      "rule": "Use Wait node for delays between operations",
+      "why": "Prevents rate limiting, adds timing control",
+      "tags": ["timing", "scheduling", "minor"]
+    },
+    {
+      "id": "credentials-test-first",
+      "name": "Test Credentials Before Workflow",
+      "category": "Configuration",
+      "priority": "major",
+      "rule": "Always test API credentials in node config first",
+      "why": "Catches auth errors before workflow runs",
+      "tags": ["credentials", "testing", "major"]
+    },
+    {
+      "id": "pagination-api-calls",
+      "name": "Pagination for Large API Responses",
+      "category": "API Integration",
+      "priority": "major",
+      "nodeTypes": ["n8n-nodes-base.httpRequest"],
+      "rule": "Implement pagination for API responses > 100 items",
+      "why": "APIs limit response size, need multiple requests",
+      "tags": ["api", "pagination", "major"]
+    },
+    {
+      "id": "expression-type-coercion",
+      "name": "Expression Type Safety",
+      "category": "Expressions",
+      "priority": "major",
+      "rule": "Coerce types explicitly: parseInt(), toString(), etc.",
+      "why": "Prevents type mismatch errors at runtime",
+      "example": {
+        "correct": "parseInt($json.id)",
+        "risky": "$json.id"
+      },
+      "tags": ["expressions", "types", "major"]
+    },
+    {
+      "id": "node-naming-convention",
+      "name": "Node Naming Convention",
+      "category": "Best Practices",
+      "priority": "minor",
+      "rule": "Name nodes by function: 'Fetch Users', 'Transform Data', 'Send Email'",
+      "why": "Makes workflows easier to understand",
+      "tags": ["naming", "maintainability", "minor"]
+    },
+    {
+      "id": "documentation-nodes",
+      "name": "Document Complex Nodes",
+      "category": "Best Practices",
+      "priority": "minor",
+      "rule": "Add notes to Code nodes with complex logic",
+      "why": "Helps future maintainers understand intent",
+      "tags": ["documentation", "maintainability", "minor"]
+    },
+    {
+      "id": "error-notification-user",
+      "name": "Notify User of Errors",
+      "category": "Error Handling",
+      "priority": "major",
+      "rule": "Send email/Slack on workflow error",
+      "why": "Users know workflow failed and can investigate",
+      "tags": ["error-handling", "notification", "major"]
+    },
+    {
+      "id": "log-important-events",
+      "name": "Log Important Events",
+      "category": "Monitoring",
+      "priority": "major",
+      "rule": "Log key workflow milestones (API calls, database writes)",
+      "why": "Helps debug issues and track workflow execution",
+      "tags": ["logging", "monitoring", "major"]
+    },
+    {
+      "id": "test-with-sample-data",
+      "name": "Test with Sample Data",
+      "category": "Testing",
+      "priority": "major",
+      "rule": "Always test workflow with realistic sample data",
+      "why": "Catches edge cases before production",
+      "tags": ["testing", "validation", "major"]
+    },
+    {
+      "id": "workflow-size-limit",
+      "name": "Keep Workflows Under 15 Nodes",
+      "category": "Best Practices",
+      "priority": "major",
+      "rule": "Split workflows if > 15 nodes",
+      "why": "Easier to maintain, debug, and monitor",
+      "tags": ["maintainability", "structure", "major"]
+    },
+    {
+      "id": "api-rate-limiting",
+      "name": "Handle API Rate Limits",
+      "category": "API Integration",
+      "priority": "major",
+      "rule": "Check rate limit headers, implement backoff",
+      "why": "Prevents hitting API rate limits",
+      "tags": ["api", "reliability", "major"]
+    },
+    {
+      "id": "caching-responses",
+      "name": "Cache Frequently Accessed Data",
+      "category": "Performance",
+      "priority": "minor",
+      "rule": "Use Get/Set nodes to cache API responses",
+      "why": "Reduces API calls and improves performance",
+      "tags": ["caching", "performance", "minor"]
+    },
+    {
+      "id": "null-empty-check",
+      "name": "Check for Null/Empty Data",
+      "category": "Data Validation",
+      "priority": "major",
+      "rule": "Always check if data exists before using",
+      "why": "Prevents errors on missing data",
+      "example": {
+        "correct": "$json?.field || 'default'",
+        "risky": "$json.field"
+      },
+      "tags": ["validation", "null-safety", "major"]
+    },
+    {
+      "id": "timestamp-tracking",
+      "name": "Add Timestamps to Data",
+      "category": "Data Quality",
+      "priority": "minor",
+      "rule": "Include created_at, updated_at fields",
+      "why": "Helps audit data changes and workflow execution",
+      "tags": ["data-quality", "tracking", "minor"]
+    },
+    {
+      "id": "duplicate-detection",
+      "name": "Detect Duplicate Records",
+      "category": "Data Quality",
+      "priority": "major",
+      "rule": "Check for duplicates before inserting data",
+      "why": "Prevents duplicate records in database",
+      "tags": ["data-quality", "validation", "major"]
+    },
+    {
+      "id": "workflow-version-control",
+      "name": "Version Control Workflows",
+      "category": "Best Practices",
+      "priority": "major",
+      "rule": "Commit workflow JSON to git with descriptive messages",
+      "why": "Allows rollback and tracks changes",
+      "tags": ["version-control", "maintainability", "major"]
+    },
+    {
+      "id": "manual-trigger-backup",
+      "name": "Manual Trigger as Backup",
+      "category": "Reliability",
+      "priority": "minor",
+      "rule": "Include manual trigger for testing and recovery",
+      "why": "Allows manual execution if scheduled trigger fails",
+      "tags": ["testing", "reliability", "minor"]
+    },
+    {
+      "id": "execution-order-setting",
+      "name": "Set Execution Order to v1",
+      "category": "Workflow Settings",
+      "priority": "major",
+      "rule": "Use executionOrder: 'v1' (connection-based)",
+      "why": "More predictable than v0 (top-to-bottom)",
+      "tags": ["workflow-settings", "execution", "major"]
+    },
+    {
+      "id": "save-manual-executions",
+      "name": "Save Manual Executions",
+      "category": "Workflow Settings",
+      "priority": "minor",
+      "rule": "Enable saveManualExecutions for testing",
+      "why": "Can review manual test results in execution history",
+      "tags": ["workflow-settings", "testing", "minor"]
+    },
+    {
+      "id": "http-timeout-setting",
+      "name": "Set HTTP Request Timeout",
+      "category": "Configuration",
+      "priority": "major",
+      "nodeTypes": ["n8n-nodes-base.httpRequest"],
+      "rule": "Set timeout: 30000ms (30 seconds) for HTTP nodes",
+      "why": "Prevents workflows hanging on slow APIs",
+      "tags": ["http", "timeout", "major"]
+    },
+    {
+      "id": "loop-max-iterations",
+      "name": "Set Max Iterations for Loops",
+      "category": "Configuration",
+      "priority": "major",
+      "rule": "Add maxIterations to SplitInBatches",
+      "why": "Prevents infinite loops",
+      "tags": ["loops", "safety", "major"]
+    }
+  ]
+}

@@ -1,0 +1,233 @@
+{
+  "name": "Error Handling and Retry Logic Template",
+  "_architecture": "API Call → Check Error → [Success: Continue] [Failure: Retry with Exponential Backoff] → Final Output. Demonstrates complete error handling with retry loop.",
+  "_connections": "Error branch loops back to API call with wait. Success branch continues to output. Both paths eventually reach completion node.",
+  "_outputNodes": ["Return Data", "Send Alert"],
+  "_pattern": "HTTP Request → Error Check (IF) → [Success→Output] [Failure→Retry→Wait→Loop Back] → Final Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "api-call",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "trigger-webhook",
+      "name": "Trigger Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.apiUrl }}",
+        "method": "GET",
+        "options": {
+          "timeout": 10000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": true
+            }
+          }
+        }
+      },
+      "id": "api-request",
+      "name": "API Request (May Fail)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [470, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.error !== undefined }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-error",
+      "name": "Check If Error",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const error = $input.first().json.error;\nconst attempt = $input.first().json.attempt || 1;\nconst maxRetries = 3;\n\nif (attempt < maxRetries) {\n  // Exponential backoff: 2^attempt seconds\n  const waitTime = Math.pow(2, attempt) * 1000;\n  \n  return [{\n    json: {\n      shouldRetry: true,\n      attempt: attempt + 1,\n      waitTime: waitTime,\n      error: error,\n      message: `Retry attempt ${attempt + 1} of ${maxRetries}`\n    }\n  }];\n} else {\n  return [{\n    json: {\n      shouldRetry: false,\n      attempt: attempt,\n      error: error,\n      message: 'Max retries exceeded'\n    }\n  }];\n}"
+      },
+      "id": "retry-logic",
+      "name": "Retry Logic (Exponential Backoff)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.shouldRetry }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-retry",
+      "name": "Should Retry?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1130, 200]
+    },
+    {
+      "parameters": {
+        "amount": "={{ $json.waitTime }}",
+        "unit": "ms"
+      },
+      "id": "wait-before-retry",
+      "name": "Wait Before Retry",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1350, 100]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Log error details\nconst errorDetails = {\n  timestamp: new Date().toISOString(),\n  errorMessage: $json.error?.message || 'Unknown error',\n  errorCode: $json.error?.code || 'N/A',\n  stack: $json.error?.stack || 'N/A',\n  context: {\n    workflow: $workflow.name,\n    execution: $execution.id,\n    node: 'API Request'\n  }\n};\n\nconsole.error('Error captured:', JSON.stringify(errorDetails, null, 2));\n\nreturn [{\n  json: errorDetails\n}];"
+      },
+      "id": "log-error",
+      "name": "Log Error Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1350, 300]
+    },
+    {
+      "parameters": {
+        "channelId": "={{ $env.SLACK_CHANNEL_ID }}",
+        "text": "=⚠️ Error Alert\n\n*Workflow:* {{ $workflow.name }}\n*Error:* {{ $json.errorMessage }}\n*Timestamp:* {{ $json.timestamp }}\n*Execution ID:* {{ $json.context.execution }}\n\nPlease investigate.",
+        "attachments": [],
+        "otherOptions": {}
+      },
+      "id": "notify-error",
+      "name": "Notify Error (Slack)",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [1570, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "5",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "url": "={{ $env.DATABASE_URL }}",
+        "table": "error_logs",
+        "columns": {
+          "mappings": [
+            {
+              "column": "timestamp",
+              "value": "={{ $json.timestamp }}"
+            },
+            {
+              "column": "error_message",
+              "value": "={{ $json.errorMessage }}"
+            },
+            {
+              "column": "workflow_name",
+              "value": "={{ $json.context.workflow }}"
+            },
+            {
+              "column": "execution_id",
+              "value": "={{ $json.context.execution }}"
+            }
+          ]
+        }
+      },
+      "id": "store-error",
+      "name": "Store Error in Database",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1790, 300],
+      "credentials": {
+        "postgres": {
+          "id": "7",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"error\", \"message\": $json.errorMessage, \"logged\": true } }}"
+      },
+      "id": "error-response",
+      "name": "Send Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2010, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "success-response",
+      "name": "Send Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [910, 400]
+    }
+  ],
+  "connections": {
+    "Trigger Webhook": {
+      "main": [[{"node": "API Request (May Fail)", "type": "main", "index": 0}]]
+    },
+    "API Request (May Fail)": {
+      "main": [[{"node": "Check If Error", "type": "main", "index": 0}]]
+    },
+    "Check If Error": {
+      "main": [
+        [{"node": "Retry Logic (Exponential Backoff)", "type": "main", "index": 0}],
+        [{"node": "Send Success Response", "type": "main", "index": 0}]
+      ]
+    },
+    "Retry Logic (Exponential Backoff)": {
+      "main": [[{"node": "Should Retry?", "type": "main", "index": 0}]]
+    },
+    "Should Retry?": {
+      "main": [
+        [{"node": "Wait Before Retry", "type": "main", "index": 0}],
+        [{"node": "Log Error Details", "type": "main", "index": 0}]
+      ]
+    },
+    "Wait Before Retry": {
+      "main": [[{"node": "API Request (May Fail)", "type": "main", "index": 0}]]
+    },
+    "Log Error Details": {
+      "main": [[{"node": "Notify Error (Slack)", "type": "main", "index": 0}]]
+    },
+    "Notify Error (Slack)": {
+      "main": [[{"node": "Store Error in Database", "type": "main", "index": 0}]]
+    },
+    "Store Error in Database": {
+      "main": [[{"node": "Send Error Response", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateDescription": "Comprehensive error handling template with exponential backoff retry logic, error logging, Slack notifications, and database error storage. Demonstrates best practices for resilient workflow design."
+  },
+  "id": "error-handling-retry",
+  "tags": ["error-handling", "retry", "resilience", "monitoring", "best-practices"]
+}

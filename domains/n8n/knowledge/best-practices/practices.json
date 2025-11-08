@@ -1,0 +1,383 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2025-11-05",
+  "categories": {
+    "errorHandling": {
+      "title": "Error Handling",
+      "priority": "critical",
+      "practices": [
+        {
+          "id": "eh-001",
+          "practice": "Always set continueOnFail: true on external API calls",
+          "why": "Allows error handling instead of stopping workflow",
+          "example": "HTTP Request node → continueOnFail: true",
+          "impact": "Prevents workflow failure on API errors"
+        },
+        {
+          "id": "eh-002",
+          "practice": "Route errors to main[1] connection",
+          "why": "n8n provides dual output paths for error handling",
+          "example": "main[0] → Success handler, main[1] → Error handler",
+          "impact": "Enables separate success/error workflows"
+        },
+        {
+          "id": "eh-003",
+          "practice": "Log errors before stopping",
+          "why": "Helps debug and audit failures",
+          "example": "Log to database before sending error email",
+          "impact": "Better diagnostics and historical data"
+        },
+        {
+          "id": "eh-004",
+          "practice": "Notify user of failures via email/Slack",
+          "why": "Users know workflow failed and can take action",
+          "example": "Error path → Gmail/Slack node",
+          "impact": "Improved user experience and visibility"
+        },
+        {
+          "id": "eh-005",
+          "practice": "Implement exponential backoff for retries",
+          "why": "Temporary failures (rate limits, timeouts) often succeed on retry",
+          "example": "Retry 1: 1s, Retry 2: 3s, Retry 3: 9s",
+          "impact": "Higher success rate, fewer false failures"
+        },
+        {
+          "id": "eh-006",
+          "practice": "Catch JSON parsing errors in Code nodes",
+          "why": "Malformed data can crash Code nodes",
+          "example": "try/catch around JSON.parse()",
+          "impact": "Robust Code node handling"
+        },
+        {
+          "id": "eh-007",
+          "practice": "Define fallback/default values",
+          "why": "Missing data should have sensible defaults",
+          "example": "price || 0, email || 'unknown@example.com'",
+          "impact": "Prevents null reference errors"
+        }
+      ]
+    },
+    "security": {
+      "title": "Security",
+      "priority": "critical",
+      "practices": [
+        {
+          "id": "sec-001",
+          "practice": "Never hardcode API keys in workflows",
+          "why": "Keys visible in JSON exports, could be exposed",
+          "example": "❌ url: 'https://api.example.com?key=sk-1234'",
+          "fix": "✅ Use credentials or $env.API_KEY",
+          "impact": "Prevents credential leakage"
+        },
+        {
+          "id": "sec-002",
+          "practice": "Use credentials stored in n8n",
+          "why": "n8n encrypts credentials, not exposed in JSON",
+          "example": "credentials: {httpApi: {id: 'cred-123', name: 'My API'}}",
+          "impact": "Secure credential management"
+        },
+        {
+          "id": "sec-003",
+          "practice": "Use $env.VAR_NAME for sensitive values",
+          "why": "Environment variables are external, not in workflow JSON",
+          "example": "url: $env.API_URL",
+          "impact": "Externalized secrets"
+        },
+        {
+          "id": "sec-004",
+          "practice": "Validate user input before using",
+          "why": "Prevents injection attacks and data corruption",
+          "example": "Check email format before sending email",
+          "impact": "Input validation prevents attacks"
+        },
+        {
+          "id": "sec-005",
+          "practice": "Don't expose internal field names in responses",
+          "why": "Prevents information leakage",
+          "example": "Don't return internal_user_id in API response",
+          "impact": "Reduced attack surface"
+        },
+        {
+          "id": "sec-006",
+          "practice": "Sanitize data before storing",
+          "why": "Prevents stored XSS and injection in database",
+          "example": "Strip HTML tags before saving to DB",
+          "impact": "Database security"
+        },
+        {
+          "id": "sec-007",
+          "practice": "Use OAuth2 instead of basic auth for APIs",
+          "why": "OAuth2 is more secure and doesn't expose passwords",
+          "example": "Use OAuth2 credential type",
+          "impact": "More secure API authentication"
+        }
+      ]
+    },
+    "performance": {
+      "title": "Performance",
+      "priority": "major",
+      "practices": [
+        {
+          "id": "perf-001",
+          "practice": "Use SplitInBatches for datasets > 100 items",
+          "why": "Prevents memory issues and respects API rate limits",
+          "config": "Batch size: 50-100 for APIs, 500-1000 for databases",
+          "impact": "Handles large datasets efficiently"
+        },
+        {
+          "id": "perf-002",
+          "practice": "Cache frequently accessed data",
+          "why": "Reduces API calls and improves response time",
+          "example": "Use Get/Set nodes to cache",
+          "impact": "Faster execution, fewer API calls"
+        },
+        {
+          "id": "perf-003",
+          "practice": "Use Set instead of Code for simple transformations",
+          "why": "Set is optimized for field mapping",
+          "example": "Use Set for rename, Code only for complex logic",
+          "impact": "Better performance for transforms"
+        },
+        {
+          "id": "perf-004",
+          "practice": "Implement pagination for large API responses",
+          "why": "APIs limit response size, need multiple requests",
+          "example": "Loop through pages with offset/limit",
+          "impact": "Handles large datasets correctly"
+        },
+        {
+          "id": "perf-005",
+          "practice": "Monitor execution times and optimize slow nodes",
+          "why": "Identifies bottlenecks for optimization",
+          "example": "Check execution history for slow nodes",
+          "impact": "Faster overall workflow"
+        },
+        {
+          "id": "perf-006",
+          "practice": "Use IF nodes instead of Code for conditionals",
+          "why": "IF is more performant for simple conditions",
+          "example": "Use IF for: if x == y, use Code for: complex logic",
+          "impact": "Better performance"
+        },
+        {
+          "id": "perf-007",
+          "practice": "Avoid N+1 queries in loops",
+          "why": "Each loop iteration runs a query = inefficient",
+          "example": "Fetch all data once, then loop vs fetch in loop",
+          "impact": "Much better database performance"
+        }
+      ]
+    },
+    "maintainability": {
+      "title": "Maintainability",
+      "priority": "major",
+      "practices": [
+        {
+          "id": "maint-001",
+          "practice": "Use descriptive node names",
+          "why": "Makes workflows easy to understand",
+          "example": "❌ 'node-2', ✅ 'Fetch User Orders'",
+          "impact": "Easier to understand workflow"
+        },
+        {
+          "id": "maint-002",
+          "practice": "Add notes to complex nodes",
+          "why": "Helps future maintainers understand intent",
+          "example": "Code node with complex logic + explanatory note",
+          "impact": "Better documentation"
+        },
+        {
+          "id": "maint-003",
+          "practice": "Keep workflows to 15 nodes or less",
+          "why": "Large workflows are hard to maintain",
+          "example": "Split into sub-workflows if > 15 nodes",
+          "impact": "Easier to maintain"
+        },
+        {
+          "id": "maint-004",
+          "practice": "Document data formats at each stage",
+          "why": "Prevents data structure confusion",
+          "example": "Add note: 'At this point, data is {user: {id, email}}'",
+          "impact": "Prevents integration errors"
+        },
+        {
+          "id": "maint-005",
+          "practice": "Version control workflow JSON",
+          "why": "Allows rollback and tracks changes",
+          "example": "Commit to git with descriptive messages",
+          "impact": "Change tracking and rollback"
+        },
+        {
+          "id": "maint-006",
+          "practice": "Use consistent naming conventions",
+          "why": "Makes workflows predictable",
+          "example": "Prefix: 'Fetch-', 'Transform-', 'Send-'",
+          "impact": "Better readability"
+        },
+        {
+          "id": "maint-007",
+          "practice": "Separate concerns into different workflows",
+          "why": "Single responsibility makes debugging easier",
+          "example": "Separate workflow for each domain",
+          "impact": "Easier to debug and modify"
+        }
+      ]
+    },
+    "reliability": {
+      "title": "Reliability",
+      "priority": "major",
+      "practices": [
+        {
+          "id": "rel-001",
+          "practice": "Test error scenarios",
+          "why": "Success cases alone don't prove reliability",
+          "example": "Test with invalid data, API failures, empty results",
+          "impact": "Catches edge cases"
+        },
+        {
+          "id": "rel-002",
+          "practice": "Implement health checks",
+          "why": "Know if workflow is working correctly",
+          "example": "Schedule health check every 15 minutes",
+          "impact": "Early detection of failures"
+        },
+        {
+          "id": "rel-003",
+          "practice": "Log important events",
+          "why": "Helps debug issues and track execution",
+          "example": "Log: workflow start, API call, database write, errors",
+          "impact": "Better visibility"
+        },
+        {
+          "id": "rel-004",
+          "practice": "Monitor execution history",
+          "why": "Spot patterns in failures",
+          "example": "Review failed executions weekly",
+          "impact": "Identifies issues proactively"
+        },
+        {
+          "id": "rel-005",
+          "practice": "Have manual trigger backup",
+          "why": "Can execute if scheduled trigger fails",
+          "example": "Include Manual trigger node",
+          "impact": "Manual recovery option"
+        },
+        {
+          "id": "rel-006",
+          "practice": "Document expected behavior",
+          "why": "Prevents misunderstandings",
+          "example": "Document: what triggers, what it does, what happens on error",
+          "impact": "Clearer expectations"
+        },
+        {
+          "id": "rel-007",
+          "practice": "Set execution timeouts",
+          "why": "Prevents workflows hanging forever",
+          "example": "Set HTTP timeout: 30000ms",
+          "impact": "Workflows complete/fail predictably"
+        }
+      ]
+    },
+    "dataQuality": {
+      "title": "Data Quality",
+      "priority": "major",
+      "practices": [
+        {
+          "id": "dq-001",
+          "practice": "Check for null/empty data",
+          "why": "Prevents errors on missing data",
+          "example": "$json?.field || 'default'",
+          "impact": "Handles missing data gracefully"
+        },
+        {
+          "id": "dq-002",
+          "practice": "Add timestamps to data",
+          "why": "Helps audit and track changes",
+          "example": "created_at: new Date(), updated_at: new Date()",
+          "impact": "Better data audit trail"
+        },
+        {
+          "id": "dq-003",
+          "practice": "Detect duplicate records",
+          "why": "Prevents duplicates in database",
+          "example": "Check for existing record before insert",
+          "impact": "Data integrity"
+        },
+        {
+          "id": "dq-004",
+          "practice": "Validate data types",
+          "why": "Prevents type mismatch errors",
+          "example": "Ensure email is string, id is number",
+          "impact": "Type safety"
+        },
+        {
+          "id": "dq-005",
+          "practice": "Normalize data before storing",
+          "why": "Consistent data format",
+          "example": "Lowercase emails, trim whitespace",
+          "impact": "Consistent data"
+        },
+        {
+          "id": "dq-006",
+          "practice": "Archive old data instead of deleting",
+          "why": "Preserves historical data",
+          "example": "Move old records to archive table",
+          "impact": "Data preservation"
+        }
+      ]
+    },
+    "testing": {
+      "title": "Testing & Validation",
+      "priority": "major",
+      "practices": [
+        {
+          "id": "test-001",
+          "practice": "Test with sample data first",
+          "why": "Validates workflow before production",
+          "example": "Use Manual trigger with test data",
+          "impact": "Catches issues early"
+        },
+        {
+          "id": "test-002",
+          "practice": "Test edge cases",
+          "why": "Success cases alone don't prove correctness",
+          "example": "Empty data, null values, special characters",
+          "impact": "Robust workflows"
+        },
+        {
+          "id": "test-003",
+          "practice": "Test with realistic volumes",
+          "why": "Performance issues appear with real data",
+          "example": "Test with 10k records if production expects 10k",
+          "impact": "Performance validated"
+        },
+        {
+          "id": "test-004",
+          "practice": "Test error paths",
+          "why": "Error handling must work",
+          "example": "Test with invalid API key, network failure",
+          "impact": "Proven error handling"
+        },
+        {
+          "id": "test-005",
+          "practice": "Test credentials before deployment",
+          "why": "Wrong credentials block execution",
+          "example": "Use credential test button",
+          "impact": "Prevents deployment failures"
+        }
+      ]
+    }
+  },
+  "principles": [
+    "Simplicity over complexity - keep workflows simple and understandable",
+    "Fail fast - catch errors early with validation",
+    "Resilience first - always assume external services can fail",
+    "Security always - never hardcode secrets, always validate input",
+    "Measurable operations - log key events for visibility",
+    "Version control - track all workflow changes",
+    "Documentation - explain the 'why', not just the 'what'",
+    "Testing thoroughly - test success, error, and edge cases",
+    "Performance matters - optimize for scale",
+    "Maintainability - future you will thank you"
+  ]
+}

@@ -1,201 +1,262 @@
-# N8NWorkflow
+# Automation Consulting Monorepo
 
-n8n agentic workflow automation repository with curated templates, best practices, and documentation for building production-grade workflows.
+**Multi-platform automation consulting toolkit** - Domain-driven monorepo for n8n, Airtable, Make.com, databases, and integrations.
+
+---
+
+## 🎯 Overview
+
+This monorepo contains everything needed to deliver professional automation consulting across multiple platforms. Each domain is self-contained with its own agents, skills, workflows, and knowledge bases.
+
+### Supported Platforms
+
+- **n8n** - Workflow automation and integrations ✅ **Active**
+- **Airtable** - Low-code database and workflows 🚧 Coming soon
+- **Make.com** - Visual automation scenarios 🚧 Coming soon
+- **Databases** - ETL, sync, and migrations 🚧 Coming soon
+- **Integrations** - Cross-platform automation 🚧 Coming soon
+
+---
 
 ## 📁 Repository Structure
 
 ```
-N8NWorkflow/
-├── workflow-templates/       # Reusable workflow JSON templates
-│   ├── ai-agent-orchestration.json
-│   ├── api-sync-workflow.json
-│   ├── error-handling-retry.json
-│   ├── github-pr-review.json
-│   └── monitoring-health-check.json
-├── n8n-workflows/           # Active/production workflows
-├── docs/                    # Documentation and guides
-├── config/                  # Configuration files
-├── src/                     # Custom code modules
-├── .claude/agents/          # AI agent configurations
-├── BEST_PRACTICES.md        # 🎯 Comprehensive best practices guide
-├── README.md                # This file
-└── package.json             # Dependencies
+automation-monorepo/
+├── domains/              # Platform-specific automation
+│   ├── n8n/             # n8n workflows, skills, agents
+│   ├── airtable/        # Airtable bases and automations
+│   ├── make-com/        # Make.com scenarios
+│   ├── databases/       # Database workflows
+│   └── integrations/    # Cross-platform integrations
+├── shared/              # Cross-domain resources
+│   ├── agents/          # Generic automation agents
+│   ├── skills/          # Platform-agnostic skills
+│   ├── knowledge/       # Common patterns and practices
+│   └── templates/       # Reusable templates
+├── automation/          # Build and deployment
+│   ├── scripts/         # Automation scripts
+│   ├── src/             # Shared source code
+│   └── config/          # Configuration
+├── docs/                # Documentation
+│   ├── architecture/    # Design docs
+│   ├── guides/          # How-to guides
+│   ├── references/      # API references
+│   └── audits/          # Security and quality audits
+└── tests/               # Integration and E2E tests
 ```
+
+---
 
 ## 🚀 Quick Start
-
-### 1. Installation
-
-```bash
-npm install
-```
-
-### 2. Using Workflow Templates
-
-All templates are located in the [`workflow-templates/`](./workflow-templates) directory:
-
-1. **Browse Templates**: Navigate to `workflow-templates/` to view available templates
-2. **Import to n8n**: Open n8n → **Import from File** → Select template JSON
-3. **Configure Credentials**: Set up required API keys and credentials
-4. **Customize**: Adjust nodes and parameters for your use case
-5. **Test**: Run the workflow with sample data
-6. **Deploy**: Activate the workflow for production use
-
-### 3. Running the Application
-
-```bash
-npm start
-```
-
-## 📚 Available Workflow Templates
-
-### 1. [AI Agent Orchestration](./workflow-templates/ai-agent-orchestration.json)
-Multi-agent orchestration workflow that routes tasks to specialized AI agents (GPT-4, Claude) based on intent classification.
-
-**Use Cases**: AI chatbots, intelligent routing, multi-model AI systems  
-**Key Features**: Intent classification, multiple LLM integration, result aggregation
-
-### 2. [API Sync Workflow](./workflow-templates/api-sync-workflow.json)
-Scheduled API synchronization workflow that fetches data from a source API, transforms it, and syncs to a target API in batches.
-
-**Use Cases**: Data synchronization, ETL pipelines, third-party integrations  
-**Key Features**: Scheduled execution, batch processing, retry logic, notifications
-
-### 3. [Error Handling & Retry Logic](./workflow-templates/error-handling-retry.json)
-Comprehensive error handling template with exponential backoff retry logic, error logging, and database storage.
-
-**Use Cases**: Resilient workflows, production systems, critical operations  
-**Key Features**: Exponential backoff, error logging, Slack alerts, database persistence
-
-### 4. [GitHub PR Automated Review](./workflow-templates/github-pr-review.json)
-Automated GitHub PR review workflow using GPT-4 to analyze code changes and post detailed review comments.
-
-**Use Cases**: Code review automation, CI/CD pipelines, developer productivity  
-**Key Features**: Webhook triggers, GPT-4 code analysis, automated comments, labeling
-
-### 5. [Monitoring & Health Check](./workflow-templates/monitoring-health-check.json)
-Scheduled monitoring workflow that performs health checks on APIs/services and sends alerts for degraded services.
-
-**Use Cases**: System monitoring, uptime tracking, alerting  
-**Key Features**: Periodic health checks, response time tracking, Slack alerts, metrics logging
-
-## 🎯 Best Practices
-
-For comprehensive guidance on building production-ready n8n workflows, see our **[BEST_PRACTICES.md](./BEST_PRACTICES.md)** guide, which covers:
-
-- 📁 Repository structure and organization
-- 🚀 Scaling strategies (Docker Compose, queues, batch processing)
-- 🔐 Credential management and security
-- 📦 Version control and backup strategies
-- ⚡ Performance optimization
-- 🛡️ Error handling and monitoring
-- 🧪 Testing and validation
-- 📚 Documentation standards
-- 🌐 Community resources and learning materials
-
-## 💻 Development
 
 ### Prerequisites
 
 - Node.js 18+
-- npm or yarn
-- n8n installed (locally or via Docker)
-- Git for version control
+- n8n instance (Cloud or self-hosted)
+- API keys for platforms you're using
 
-### Recommended Setup
-
-For production deployments, use Docker Compose with PostgreSQL:
+### Installation
 
 ```bash
-# See BEST_PRACTICES.md for full Docker Compose configuration
-docker-compose up -d
+# Clone repository
+git clone <your-repo-url>
+cd N8NWorkflow
+
+# Install dependencies
+npm install
+
+# Copy environment template
+cp automation/config/.env.example .env
+
+# Add your API keys to .env
 ```
 
-### Adding New Templates
+### For n8n Development
 
-1. Create workflow in n8n UI
-2. Test thoroughly with various scenarios
-3. Export workflow as JSON
-4. Add to `workflow-templates/` with descriptive name
-5. Document in this README
-6. Commit with clear message
+```bash
+# Navigate to n8n domain
+cd domains/n8n
 
-## 🔧 Tools & Technologies
+# Deploy a workflow
+node scripts/deploy/deploy-workflow.js
 
-- **n8n**: Visual workflow automation platform
-- **Docker**: Containerization and deployment
-- **PostgreSQL**: Persistent data storage
-- **LangChain**: AI/LLM integration framework
-- **OpenAI/Anthropic**: AI model providers
-- **GitHub Actions**: CI/CD automation
+# Test a workflow
+node scripts/test/test-form-webhook.js
 
-## 🌐 Community & Resources
-
-### Official Resources
-- [n8n Documentation](https://docs.n8n.io/)
-- [n8n Community Forum](https://community.n8n.io/)
-- [n8n GitHub Repository](https://github.com/n8n-io/n8n)
-- [n8n Workflows Library](https://n8n.io/workflows/)
-
-### Template Libraries
-- [Awesome n8n Templates](https://github.com/enescingoz/awesome-n8n-templates)
-- [Ultimate n8n AI Workflows](https://github.com/oxbshw/ultimate-n8n-ai-workflows) - 3,400+ workflows
-
-### Learning Resources
-- [n8n YouTube Channel](https://www.youtube.com/@n8n-io)
-- [n8n Discord Community](https://discord.gg/n8n)
-- Stack Overflow - Tag: `n8n`
-- Reddit - r/n8n
-
-## 📝 Documentation
-
-- **[BEST_PRACTICES.md](./BEST_PRACTICES.md)** - Comprehensive workflow best practices
-- **[LESSONS_LEARNED.md](./LESSONS_LEARNED.md)** - Project insights and learnings
-- **[WORKFLOW_STATUS.md](./WORKFLOW_STATUS.md)** - Active workflow status tracking
-- **[GEMINI_EMAIL_FORM_DOCUMENTATION.md](./GEMINI_EMAIL_FORM_DOCUMENTATION.md)** - Gemini email form workflow docs
-
-## 🤝 Contributing
-
-Contributions are welcome! To contribute:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-workflow`)
-3. Add your workflow template or documentation
-4. Test thoroughly
-5. Commit your changes (`git commit -m 'Add amazing workflow template'`)
-6. Push to the branch (`git push origin feature/amazing-workflow`)
-7. Open a Pull Request
-
-### Contribution Guidelines
-
-- Follow existing naming conventions
-- Include comprehensive documentation
-- Add error handling to all workflows
-- Test with edge cases
-- Update README.md with new templates
-
-## ⚠️ Important Notes
-
-- **Never commit API keys or credentials** to the repository
-- Use environment variables for sensitive configuration
-- Test workflows thoroughly before production deployment
-- Keep workflows modular and reusable
-- Document all custom code and complex logic
-
-## 💬 Support
-
-For questions, issues, or discussions:
-
-- Open an [Issue](https://github.com/Johnobhoy88/N8NWorkflow/issues)
-- Join the [n8n Community Forum](https://community.n8n.io/)
-- Check our [BEST_PRACTICES.md](./BEST_PRACTICES.md) guide
-
-## 📄 License
-
-This project is maintained for educational and automation purposes. Please refer to individual workflow licenses and n8n's terms of service.
+# Validate workflows
+node scripts/validate/validate-workflow.js
+```
 
 ---
 
-**Happy Automating! 🤖**
+## 📖 Documentation
 
-Built with ❤️ using n8n
+### Getting Started
+- [n8n Setup Guide](docs/guides/n8n-setup.md)
+- [Form Testing Guide](docs/guides/form-testing.md)
+- [Email Submission Guide](docs/guides/email-submission.md)
+
+### Architecture
+- [Monorepo Design](docs/architecture/monorepo-design.md)
+- [Domain Structure](docs/architecture/domain-structure.md)
+- [Technology Stack](docs/architecture/technology-stack.md)
+
+### References
+- [API Skills Reference](docs/references/api-skills.md)
+- [Skill Patterns](docs/references/skill-patterns.md)
+- [Implementation Patterns](docs/references/implementation-patterns.md)
+
+### Audits
+- [2025-11-08 Security Audit](docs/audits/2025-11-08-workflow-security-audit.md)
+- [2025-11-08 Baseline](docs/audits/2025-11-08-baseline.md)
+
+---
+
+## 🎨 Domain Guides
+
+Each domain has its own comprehensive guide:
+
+- [n8n Domain Guide](domains/n8n/README.md) ✅ **Active**
+- [Airtable Domain Guide](domains/airtable/README.md) 🚧 Placeholder
+- [Make.com Domain Guide](domains/make-com/README.md) 🚧 Placeholder
+- [Database Domain Guide](domains/databases/README.md) 🚧 Placeholder
+- [Integrations Guide](domains/integrations/README.md) 🚧 Placeholder
+
+---
+
+## 🤖 Claude Code Integration
+
+This repository is optimized for Claude Code with:
+
+- **Agents:** Domain-specific automation agents in `.claude/agents/`
+- **Skills:** Platform-specific skills in each domain
+- **MCP Servers:** Configured for n8n and other platforms
+- **Hooks:** Automated workflows on file changes
+
+### Using Claude Code
+
+The repository includes Claude-specific configurations:
+- `.claude/CLAUDE.md` - Claude instructions
+- `.claude/INSTRUCTIONS.md` - Detailed usage guide
+- `.claude/agents/` - Specialized agents
+- Domain-specific skills in `domains/*/skills/`
+
+---
+
+## 🔐 Security
+
+**Important:** This repository uses environment variables for all sensitive data.
+
+### Environment Variables Required
+
+```bash
+# n8n
+N8N_API_URL=https://your-n8n-instance.app.n8n.cloud
+N8N_API_KEY=your-api-key
+
+# AI APIs
+GEMINI_API_KEY=your-gemini-key
+OPENAI_API_KEY=your-openai-key
+ANTHROPIC_API_KEY=your-anthropic-key
+
+# Database (if using)
+DATABASE_URL=postgresql://...
+```
+
+**Never commit API keys or credentials!** They are automatically excluded via `.gitignore`.
+
+---
+
+## 📊 What's Included
+
+### n8n Domain (Active)
+
+- **3 Agents:** Architect, Debugger, Deployment
+- **3 Skills:** Error Handling, Deployment, Troubleshooter
+- **2 Active Workflows:** Meta-workflow builders with QA
+- **5 Templates:** AI orchestration, API sync, error handling, GitHub PR review, monitoring
+- **4 Knowledge Bases:** Nodes, patterns, best practices, validation rules
+- **10 Scripts:** Deploy, test, and validate workflows
+
+### Other Domains (Placeholders)
+
+- **Airtable:** Base design, formulas, automations, API integration
+- **Make.com:** Scenario building, router logic, modules, data structures
+- **Databases:** PostgreSQL, MySQL, MongoDB, migrations
+- **Integrations:** API patterns, webhook handling, OAuth flows
+
+---
+
+## 🛠️ Development
+
+### Monorepo Workspaces
+
+This repository uses npm workspaces for efficient dependency management:
+
+```bash
+# Install all dependencies
+npm install
+
+# Run tests across all domains
+npm run test
+
+# Lint all code
+npm run lint
+```
+
+### Adding a New Domain
+
+1. Create directory structure in `domains/your-domain/`
+2. Add `package.json` to the domain
+3. Create agents, skills, and knowledge bases
+4. Update root `package.json` workspaces
+5. Add domain README
+
+---
+
+## 📈 Roadmap
+
+### Phase 1: n8n Foundation ✅ Complete
+- [x] Domain structure
+- [x] Agents and skills
+- [x] Workflow templates
+- [x] Knowledge bases
+- [x] Scripts and tools
+- [x] Security fixes (no hardcoded credentials)
+
+### Phase 2: Airtable Expansion 📅 Planned
+- [ ] Airtable agents
+- [ ] Base design skills
+- [ ] Formula patterns
+- [ ] API integration templates
+
+### Phase 3: Make.com Integration 📅 Planned
+- [ ] Scenario templates
+- [ ] Router logic patterns
+- [ ] Module catalog
+
+### Phase 4: Database Workflows 📅 Planned
+- [ ] ETL templates
+- [ ] Sync workflows
+- [ ] Backup automation
+
+### Phase 5: Cross-Platform Integrations 📅 Planned
+- [ ] n8n ↔ Airtable sync
+- [ ] Make.com ↔ Database workflows
+- [ ] Multi-platform orchestration
+
+---
+
+## 🆘 Support
+
+- Check [docs/guides/](docs/guides/) for how-to documentation
+- Review [docs/references/](docs/references/) for API details
+- Consult domain-specific READMEs for detailed guides
+- See [docs/audits/](docs/audits/) for security and baseline reports
+
+---
+
+**Built with Claude Code** - Domain-driven automation consulting toolkit for professional service delivery.
+
+**Last updated:** 2025-11-08
+**Restructure:** Domain-driven monorepo v1.0

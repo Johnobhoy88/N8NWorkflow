@@ -1,0 +1,143 @@
+{
+  "name": "System Monitoring and Health Check Template",
+  "_architecture": "Scheduled Trigger → Check System Health → [Healthy: Log Metrics] [Unhealthy: Alert + Log]. Branching pattern with dual outputs.",
+  "_connections": "Both branches from IF node reach output nodes (Slack + Database). No orphaned outputs. Error handler on API check.",
+  "_outputNodes": ["Send Slack Alert", "Log to Database"],
+  "_pattern": "Schedule → HTTP (Health Check) → IF (Status Check) → [Success: Log] [Failure: Alert+Log]",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/5 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule (Every 5 min)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.API_ENDPOINT }}/health",
+        "method": "GET",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "health-check",
+      "name": "Health Check API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [470, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "functionCode": "const startTime = Date.now();\nconst response = $input.first().json;\nconst responseTime = Date.now() - startTime;\nconst isHealthy = response.status === 'ok' && responseTime < 3000;\n\nreturn [{\n  json: {\n    timestamp: new Date().toISOString(),\n    service: 'API',\n    status: isHealthy ? 'healthy' : 'degraded',\n    responseTime: responseTime,\n    details: response\n  }\n}];"
+      },
+      "id": "evaluate-health",
+      "name": "Evaluate Health Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "notEquals",
+              "value2": "healthy"
+            }
+          ]
+        }
+      },
+      "id": "check-unhealthy",
+      "name": "Is Unhealthy?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "channelId": "={{ $env.SLACK_ALERTS_CHANNEL }}",
+        "text": "=🔴 ALERT: Service Degraded\n\n*Service:* {{ $json.service }}\n*Status:* {{ $json.status }}\n*Response Time:* {{ $json.responseTime }}ms\n*Timestamp:* {{ $json.timestamp }}",
+        "otherOptions": {}
+      },
+      "id": "alert-slack",
+      "name": "Send Alert to Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [1130, 200],
+      "credentials": {
+        "slackApi": {
+          "id": "5",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "health_metrics",
+        "columns": {
+          "mappings": [
+            {"column": "timestamp", "value": "={{ $json.timestamp }}"},
+            {"column": "service", "value": "={{ $json.service }}"},
+            {"column": "status", "value": "={{ $json.status }}"},
+            {"column": "response_time", "value": "={{ $json.responseTime }}"}
+          ]
+        }
+      },
+      "id": "log-metrics",
+      "name": "Log Metrics to Database",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1130, 400],
+      "credentials": {
+        "postgres": {
+          "id": "7",
+          "name": "PostgreSQL"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule (Every 5 min)": {
+      "main": [[{"node": "Health Check API", "type": "main", "index": 0}]]
+    },
+    "Health Check API": {
+      "main": [[{"node": "Evaluate Health Status", "type": "main", "index": 0}]]
+    },
+    "Evaluate Health Status": {
+      "main": [[{"node": "Is Unhealthy?", "type": "main", "index": 0}]]
+    },
+    "Is Unhealthy?": {
+      "main": [
+        [{"node": "Send Alert to Slack", "type": "main", "index": 0}],
+        [{"node": "Log Metrics to Database", "type": "main", "index": 0}]
+      ]
+    },
+    "Send Alert to Slack": {
+      "main": [[{"node": "Log Metrics to Database", "type": "main", "index": 0}]]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateDescription": "Scheduled monitoring workflow that performs health checks on APIs/services, evaluates response times, sends alerts for degraded services, and logs metrics to a database for trend analysis."
+  },
+  "id": "monitoring-health-check",
+  "tags": ["monitoring", "health-check", "alerts", "observability", "metrics"]
+}

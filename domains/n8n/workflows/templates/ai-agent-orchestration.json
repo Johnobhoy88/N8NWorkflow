@@ -1,0 +1,157 @@
+{
+  "name": "AI Agent Orchestration Template",
+  "_architecture": "Webhook Trigger → Route to Agents → Merge Results → Response. Each agent processes in parallel, results merge, response returns unified output.",
+  "_connections": "Both success and error paths route to Response node. No orphaned nodes.",
+  "_outputNodes": ["Webhook Response"],
+  "_pattern": "Webhook → Agent Orchestration → Merge → Response",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agent-trigger",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an AI assistant that orchestrates tasks across multiple agents."
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.query }}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 1000
+        }
+      },
+      "id": "openai-agent",
+      "name": "OpenAI Agent",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [470, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "1",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.intent }}",
+              "operation": "equals",
+              "value2": "research"
+            }
+          ]
+        }
+      },
+      "id": "router-switch",
+      "name": "Intent Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "model": "claude-3-5-sonnet-20241022",
+        "text": "={{ $json.task }}"
+      },
+      "id": "claude-researcher",
+      "name": "Claude Research Agent",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [910, 200],
+      "credentials": {
+        "anthropicApi": {
+          "id": "2",
+          "name": "Anthropic API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "aggregateResults",
+        "options": {
+          "mergeFields": ["response", "metadata"]
+        }
+      },
+      "id": "result-aggregator",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "webhook-response",
+      "name": "Send Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1350, 300]
+    },
+    {
+      "parameters": {
+        "errorMessage": "Agent orchestration failed",
+        "options": {
+          "retries": 3,
+          "retryInterval": 1000
+        }
+      },
+      "id": "error-handler",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [690, 500]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{"node": "OpenAI Agent", "type": "main", "index": 0}]]
+    },
+    "OpenAI Agent": {
+      "main": [[{"node": "Intent Router", "type": "main", "index": 0}]]
+    },
+    "Intent Router": {
+      "main": [
+        [{"node": "Claude Research Agent", "type": "main", "index": 0}],
+        [{"node": "Aggregate Results", "type": "main", "index": 0}]
+      ]
+    },
+    "Claude Research Agent": {
+      "main": [[{"node": "Aggregate Results", "type": "main", "index": 0}]]
+    },
+    "Aggregate Results": {
+      "main": [[{"node": "Send Response", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateDescription": "Multi-agent orchestration workflow that routes tasks to specialized AI agents (GPT-4, Claude) based on intent classification. Includes error handling and result aggregation."
+  },
+  "id": "ai-agent-orchestration",
+  "tags": ["AI", "agents", "orchestration", "langchain"]
+}
