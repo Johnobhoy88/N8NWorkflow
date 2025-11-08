@@ -1,0 +1,402 @@
+{
+  "name": "AI Document Classification Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "/uploads/documents",
+        "event": "add",
+        "watchOptions": {}
+      },
+      "name": "Watch Folder Trigger",
+      "type": "n8n-nodes-base.localFileTrigger",
+      "position": [250, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "filePath": "={{ $json.path }}",
+        "options": {}
+      },
+      "name": "Read File",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "position": [450, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "bucket": {
+          "__rl": true,
+          "value": "={{ $env.S3_BUCKET }}",
+          "mode": "name"
+        },
+        "fileName": "={{ $json.fileName }}",
+        "binaryData": true,
+        "options": {
+          "acl": "private",
+          "storageClass": "STANDARD"
+        }
+      },
+      "name": "Upload to S3",
+      "type": "n8n-nodes-base.awsS3",
+      "credentials": {
+        "aws": {
+          "id": "1",
+          "name": "AWS"
+        }
+      },
+      "position": [650, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "url": "https://textract.us-east-1.amazonaws.com/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "awsAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "DocumentLocation",
+              "value": "={{ { 'S3Object': { 'Bucket': $env.S3_BUCKET, 'Name': $json.fileName } } }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "name": "OCR with Textract",
+      "type": "n8n-nodes-base.httpRequest",
+      "credentials": {
+        "aws": {
+          "id": "1",
+          "name": "AWS"
+        }
+      },
+      "position": [850, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "functionCode": "// Extract text from Textract response\nconst textractResponse = $json;\nlet extractedText = '';\n\nif (textractResponse.Blocks) {\n  const lines = textractResponse.Blocks\n    .filter(block => block.BlockType === 'LINE')\n    .map(block => block.Text);\n  \n  extractedText = lines.join('\\n');\n}\n\nreturn {\n  json: {\n    fileName: $('Upload to S3').item.json.fileName,\n    s3Key: $('Upload to S3').item.json.key,\n    extractedText: extractedText,\n    textLength: extractedText.length\n  }\n};"
+      },
+      "name": "Process OCR Results",
+      "type": "n8n-nodes-base.code",
+      "position": [1050, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "messages": {
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a document classification expert. Analyze the document text and classify it into ONE of these categories: invoice, contract, receipt, report, resume, letter, form, or other. Also extract key metadata.\n\nRespond in JSON format:\n{\n  \"type\": \"invoice|contract|receipt|report|resume|letter|form|other\",\n  \"confidence\": 0.0-1.0,\n  \"metadata\": {\n    \"date\": \"YYYY-MM-DD or null\",\n    \"amount\": \"number or null\",\n    \"company\": \"company name or null\",\n    \"summary\": \"brief 1-sentence summary\"\n  }\n}"
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.extractedText }}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.2,
+          "maxTokens": 500,
+          "responseFormat": "json_object"
+        }
+      },
+      "name": "Classify with GPT-4",
+      "type": "n8n-nodes-base.openAi",
+      "credentials": {
+        "openAiApi": {
+          "id": "2",
+          "name": "OpenAI"
+        }
+      },
+      "position": [1250, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "functionCode": "// Parse GPT-4 response and combine with document data\nconst classification = JSON.parse($json.message.content);\nconst documentData = $('Process OCR Results').item.json;\n\nreturn {\n  json: {\n    fileName: documentData.fileName,\n    s3Key: documentData.s3Key,\n    documentType: classification.type,\n    confidence: classification.confidence,\n    date: classification.metadata.date,\n    amount: classification.metadata.amount,\n    company: classification.metadata.company,\n    summary: classification.metadata.summary,\n    textLength: documentData.textLength,\n    processedAt: new Date().toISOString()\n  }\n};"
+      },
+      "name": "Parse Classification",
+      "type": "n8n-nodes-base.code",
+      "position": [1450, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "invoice",
+              "leftValue": "={{ $json.documentType }}",
+              "rightValue": "invoice",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Route by Type",
+      "type": "n8n-nodes-base.switch",
+      "position": [1650, 300],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "messages": {
+          "messages": [
+            {
+              "role": "system",
+              "content": "Extract invoice data in JSON format:\n{\n  \"invoiceNumber\": \"string\",\n  \"invoiceDate\": \"YYYY-MM-DD\",\n  \"dueDate\": \"YYYY-MM-DD\",\n  \"vendor\": \"company name\",\n  \"total\": number,\n  \"currency\": \"USD|EUR|GBP\",\n  \"lineItems\": [{\n    \"description\": \"string\",\n    \"quantity\": number,\n    \"unitPrice\": number,\n    \"total\": number\n  }]\n}"
+            },
+            {
+              "role": "user",
+              "content": "={{ $('Process OCR Results').item.json.extractedText }}"
+            }
+          ]
+        },
+        "options": {
+          "responseFormat": "json_object"
+        }
+      },
+      "name": "Extract Invoice Data",
+      "type": "n8n-nodes-base.openAi",
+      "credentials": {
+        "openAiApi": {
+          "id": "2",
+          "name": "OpenAI"
+        }
+      },
+      "position": [1850, 200],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "messages": {
+          "messages": [
+            {
+              "role": "system",
+              "content": "Extract contract data in JSON format:\n{\n  \"contractType\": \"employment|service|NDA|sales\",\n  \"parties\": [\"Company A\", \"Company B\"],\n  \"startDate\": \"YYYY-MM-DD\",\n  \"endDate\": \"YYYY-MM-DD or null\",\n  \"value\": number or null,\n  \"keyTerms\": [\"term 1\", \"term 2\"]\n}"
+            },
+            {
+              "role": "user",
+              "content": "={{ $('Process OCR Results').item.json.extractedText }}"
+            }
+          ]
+        },
+        "options": {
+          "responseFormat": "json_object"
+        }
+      },
+      "name": "Extract Contract Data",
+      "type": "n8n-nodes-base.openAi",
+      "credentials": {
+        "openAiApi": {
+          "id": "2",
+          "name": "OpenAI"
+        }
+      },
+      "position": [1850, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO documents (file_name, s3_key, document_type, confidence, date, amount, company, summary, extracted_data, processed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id",
+        "additionalFields": {
+          "queryParameters": "={{ $json.fileName }},={{ $json.s3Key }},={{ $json.documentType }},={{ $json.confidence }},={{ $json.date }},={{ $json.amount }},={{ $json.company }},={{ $json.summary }},={{ JSON.stringify($json.extractedData || {}) }},={{ $json.processedAt }}"
+        }
+      },
+      "name": "Save to Database",
+      "type": "n8n-nodes-base.postgres",
+      "credentials": {
+        "postgres": {
+          "id": "3",
+          "name": "PostgreSQL"
+        }
+      },
+      "position": [2050, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "channel": "#document-processing",
+        "text": "=📄 Document Processed\n\n**File:** {{ $('Parse Classification').item.json.fileName }}\n**Type:** {{ $('Parse Classification').item.json.documentType }}\n**Confidence:** {{ ($('Parse Classification').item.json.confidence * 100).toFixed(1) }}%\n**Company:** {{ $('Parse Classification').item.json.company || 'N/A' }}\n**Amount:** {{ $('Parse Classification').item.json.amount || 'N/A' }}\n**Summary:** {{ $('Parse Classification').item.json.summary }}",
+        "attachments": [],
+        "otherOptions": {}
+      },
+      "name": "Notify Success",
+      "type": "n8n-nodes-base.slack",
+      "credentials": {
+        "slackApi": {
+          "id": "4",
+          "name": "Slack"
+        }
+      },
+      "position": [2250, 300],
+      "typeVersion": 1
+    }
+  ],
+  "connections": {
+    "Watch Folder Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read File": {
+      "main": [
+        [
+          {
+            "node": "Upload to S3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to S3": {
+      "main": [
+        [
+          {
+            "node": "OCR with Textract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OCR with Textract": {
+      "main": [
+        [
+          {
+            "node": "Process OCR Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process OCR Results": {
+      "main": [
+        [
+          {
+            "node": "Classify with GPT-4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify with GPT-4": {
+      "main": [
+        [
+          {
+            "node": "Parse Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Classification": {
+      "main": [
+        [
+          {
+            "node": "Route by Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Type": {
+      "main": [
+        [
+          {
+            "node": "Extract Invoice Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Contract Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Invoice Data": {
+      "main": [
+        [
+          {
+            "node": "Save to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Contract Data": {
+      "main": [
+        [
+          {
+            "node": "Save to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Database": {
+      "main": [
+        [
+          {
+            "node": "Notify Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "tags": ["ai", "document-processing", "classification", "ocr"],
+  "triggerCount": 1,
+  "updatedAt": "2025-11-08T00:00:00.000Z",
+  "versionId": "1.0.0"
+}

@@ -1,0 +1,309 @@
+{
+  "name": "Webhook to Multi-Channel Notifications",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "event-notifications",
+        "authentication": "headerAuth",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "position": [250, 300],
+      "webhookId": "event-notifications",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "functionCode": "// Verify webhook signature\nconst crypto = require('crypto');\n\nconst receivedSignature = $request.headers['x-webhook-signature'];\nconst secret = $env.WEBHOOK_SECRET;\nconst payload = JSON.stringify($request.body);\n\nconst expectedSignature = crypto\n  .createHmac('sha256', secret)\n  .update(payload)\n  .digest('hex');\n\nif (receivedSignature !== expectedSignature) {\n  throw new Error('Invalid webhook signature');\n}\n\n// Validate timestamp (prevent replay attacks)\nconst timestamp = parseInt($request.headers['x-webhook-timestamp']);\nconst now = Math.floor(Date.now() / 1000);\nconst maxAge = 300; // 5 minutes\n\nif (Math.abs(now - timestamp) > maxAge) {\n  throw new Error('Webhook timestamp too old');\n}\n\nreturn {\n  json: $request.body\n};"
+      },
+      "name": "Verify Signature",
+      "type": "n8n-nodes-base.code",
+      "position": [450, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "functionCode": "// Determine severity and routing\nconst event = $json;\n\nconst severity = event.severity || 'info';\nconst eventType = event.event_type || 'unknown';\n\n// Determine notification channels based on severity\nconst channels = {\n  critical: ['pagerduty', 'slack', 'email', 'sms'],\n  high: ['slack', 'email'],\n  medium: ['slack'],\n  low: ['slack'],\n  info: ['slack']\n};\n\nconst notificationChannels = channels[severity] || ['slack'];\n\n// Rate limiting check (prevent notification spam)\nconst eventKey = `${eventType}_${event.resource_id}`;\nconst lastNotification = $executionData.lastNotifications || {};\nconst now = Date.now();\nconst cooldownMs = 300000; // 5 minutes\n\nif (lastNotification[eventKey] && (now - lastNotification[eventKey]) < cooldownMs) {\n  return {\n    json: {\n      ...event,\n      notificationChannels: [],\n      rateLimited: true,\n      message: 'Notification suppressed due to rate limiting'\n    }\n  };\n}\n\n// Update last notification time\nlastNotification[eventKey] = now;\n\nreturn {\n  json: {\n    ...event,\n    severity: severity,\n    notificationChannels: notificationChannels,\n    rateLimited: false,\n    processedAt: new Date().toISOString()\n  }\n};"
+      },
+      "name": "Determine Routing",
+      "type": "n8n-nodes-base.code",
+      "position": [650, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "critical",
+              "leftValue": "={{ $json.severity }}",
+              "rightValue": "critical",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Route by Severity",
+      "type": "n8n-nodes-base.switch",
+      "position": [850, 300],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "routing_key": "={{ $env.PAGERDUTY_ROUTING_KEY }}",
+        "event_action": "trigger",
+        "payload": {
+          "summary": "={{ $json.title || 'Critical Event' }}",
+          "severity": "critical",
+          "source": "={{ $json.source || 'n8n-webhook' }}",
+          "custom_details": "={{ $json }}"
+        },
+        "options": {}
+      },
+      "name": "Page On-Call (PagerDuty)",
+      "type": "n8n-nodes-base.pagerDuty",
+      "credentials": {
+        "pagerDutyApi": {
+          "id": "1",
+          "name": "PagerDuty"
+        }
+      },
+      "position": [1050, 150],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "channel": "#alerts-critical",
+        "text": "=🚨 **CRITICAL ALERT**\n\n**Event:** {{ $json.event_type }}\n**Title:** {{ $json.title }}\n**Source:** {{ $json.source }}\n**Details:** {{ $json.description }}\n**Time:** {{ $json.processedAt }}",
+        "attachments": [],
+        "otherOptions": {
+          "sendAsUser": "Alert Bot"
+        }
+      },
+      "name": "Slack Critical",
+      "type": "n8n-nodes-base.slack",
+      "credentials": {
+        "slackApi": {
+          "id": "2",
+          "name": "Slack"
+        }
+      },
+      "position": [1050, 250],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "channel": "#alerts",
+        "text": "=⚠️ **{{ $json.severity.toUpperCase() }} EVENT**\n\n**Type:** {{ $json.event_type }}\n**Title:** {{ $json.title }}\n**Source:** {{ $json.source }}\n**Details:** {{ $json.description }}\n**Time:** {{ $json.processedAt }}",
+        "attachments": [],
+        "otherOptions": {}
+      },
+      "name": "Slack Standard",
+      "type": "n8n-nodes-base.slack",
+      "credentials": {
+        "slackApi": {
+          "id": "2",
+          "name": "Slack"
+        }
+      },
+      "position": [1050, 350],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "fromEmail": "alerts@example.com",
+        "toEmail": "={{ $env.ONCALL_EMAIL }}",
+        "subject": "=[{{ $json.severity.toUpperCase() }}] {{ $json.title }}",
+        "emailFormat": "html",
+        "text": "=<h2>{{ $json.title }}</h2>\n\n<p><strong>Event Type:</strong> {{ $json.event_type }}</p>\n<p><strong>Severity:</strong> {{ $json.severity }}</p>\n<p><strong>Source:</strong> {{ $json.source }}</p>\n<p><strong>Time:</strong> {{ $json.processedAt }}</p>\n\n<h3>Details:</h3>\n<p>{{ $json.description }}</p>\n\n<h3>Additional Data:</h3>\n<pre>{{ JSON.stringify($json.metadata || {}, null, 2) }}</pre>",
+        "options": {}
+      },
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "credentials": {
+        "smtp": {
+          "id": "3",
+          "name": "SMTP"
+        }
+      },
+      "position": [1050, 450],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO event_notifications (event_type, severity, title, description, source, metadata, notification_channels, processed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+        "additionalFields": {
+          "queryParameters": "={{ $json.event_type }},={{ $json.severity }},={{ $json.title }},={{ $json.description }},={{ $json.source }},={{ JSON.stringify($json.metadata || {}) }},={{ JSON.stringify($json.notificationChannels) }},={{ $json.processedAt }}"
+        }
+      },
+      "name": "Log to Database",
+      "type": "n8n-nodes-base.postgres",
+      "credentials": {
+        "postgres": {
+          "id": "4",
+          "name": "PostgreSQL"
+        }
+      },
+      "position": [1250, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { 'status': 'success', 'message': 'Event processed', 'id': $json.id, 'channels': $('Determine Routing').item.json.notificationChannels } }}",
+        "options": {}
+      },
+      "name": "Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [1450, 300],
+      "typeVersion": 1
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Verify Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Signature": {
+      "main": [
+        [
+          {
+            "node": "Determine Routing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine Routing": {
+      "main": [
+        [
+          {
+            "node": "Route by Severity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Severity": {
+      "main": [
+        [
+          {
+            "node": "Page On-Call (PagerDuty)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Slack Critical",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack Standard",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack Standard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Page On-Call (PagerDuty)": {
+      "main": [
+        [
+          {
+            "node": "Log to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack Critical": {
+      "main": [
+        [
+          {
+            "node": "Log to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack Standard": {
+      "main": [
+        [
+          {
+            "node": "Log to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email": {
+      "main": [
+        [
+          {
+            "node": "Log to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Database": {
+      "main": [
+        [
+          {
+            "node": "Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["event-processing", "notifications", "webhook", "alerting"],
+  "triggerCount": 1,
+  "updatedAt": "2025-11-08T00:00:00.000Z",
+  "versionId": "1.0.0"
+}

@@ -1,0 +1,226 @@
+{
+  "name": "Salesforce to PostgreSQL Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 * * * *"
+            }
+          ]
+        }
+      },
+      "name": "Hourly Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [250, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT last_sync_time, sync_cursor FROM sync_metadata WHERE sync_name = 'salesforce_contacts' LIMIT 1"
+      },
+      "name": "Get Last Sync Time",
+      "type": "n8n-nodes-base.postgres",
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "PostgreSQL Account"
+        }
+      },
+      "position": [450, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "resource": "contact",
+        "operation": "getAll",
+        "returnAll": false,
+        "limit": 1000,
+        "options": {
+          "fields": "Id,FirstName,LastName,Email,Phone,Account.Name,CreatedDate,LastModifiedDate",
+          "conditions": {
+            "conditionsUi": {
+              "condition": [
+                {
+                  "field": "LastModifiedDate",
+                  "operation": ">=",
+                  "value": "={{ $json.last_sync_time }}"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "name": "Fetch Salesforce Contacts",
+      "type": "n8n-nodes-base.salesforce",
+      "credentials": {
+        "salesforceOAuth2Api": {
+          "id": "2",
+          "name": "Salesforce OAuth2"
+        }
+      },
+      "position": [650, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "functionCode": "// Transform Salesforce data to PostgreSQL schema\nconst items = $input.all();\n\nreturn items.map(item => {\n  const contact = item.json;\n  \n  return {\n    json: {\n      salesforce_id: contact.Id,\n      first_name: contact.FirstName || null,\n      last_name: contact.LastName || null,\n      email: contact.Email || null,\n      phone: contact.Phone || null,\n      account_name: contact.Account?.Name || null,\n      created_at: contact.CreatedDate,\n      updated_at: contact.LastModifiedDate,\n      synced_at: new Date().toISOString()\n    }\n  };\n});"
+      },
+      "name": "Transform Data",
+      "type": "n8n-nodes-base.code",
+      "position": [850, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO contacts (salesforce_id, first_name, last_name, email, phone, account_name, created_at, updated_at, synced_at)\nVALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)\nON CONFLICT (salesforce_id) DO UPDATE SET\n  first_name = EXCLUDED.first_name,\n  last_name = EXCLUDED.last_name,\n  email = EXCLUDED.email,\n  phone = EXCLUDED.phone,\n  account_name = EXCLUDED.account_name,\n  updated_at = EXCLUDED.updated_at,\n  synced_at = EXCLUDED.synced_at",
+        "additionalFields": {
+          "queryParameters": "={{ $json.salesforce_id }},{{ $json.first_name }},{{ $json.last_name }},{{ $json.email }},{{ $json.phone }},{{ $json.account_name }},{{ $json.created_at }},{{ $json.updated_at }},{{ $json.synced_at }}"
+        }
+      },
+      "name": "Upsert to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "PostgreSQL Account"
+        }
+      },
+      "position": [1050, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE sync_metadata SET last_sync_time = NOW(), records_synced = records_synced + {{ $items().length }}, last_run_at = NOW() WHERE sync_name = 'salesforce_contacts'"
+      },
+      "name": "Update Sync Metadata",
+      "type": "n8n-nodes-base.postgres",
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "PostgreSQL Account"
+        }
+      },
+      "position": [1250, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "channel": "#data-sync",
+        "text": "=✅ Salesforce → PostgreSQL sync completed\n📊 Records synced: {{ $items().length }}\n🕐 Timestamp: {{ new Date().toISOString() }}",
+        "otherOptions": {}
+      },
+      "name": "Notify Slack",
+      "type": "n8n-nodes-base.slack",
+      "credentials": {
+        "slackApi": {
+          "id": "3",
+          "name": "Slack"
+        }
+      },
+      "position": [1450, 300],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "channel": "#alerts",
+        "text": "=🚨 Salesforce sync error\nError: {{ $json.error }}\nTimestamp: {{ new Date().toISOString() }}",
+        "otherOptions": {}
+      },
+      "name": "Error Notification",
+      "type": "n8n-nodes-base.slack",
+      "credentials": {
+        "slackApi": {
+          "id": "3",
+          "name": "Slack"
+        }
+      },
+      "position": [1050, 500],
+      "typeVersion": 1
+    }
+  ],
+  "connections": {
+    "Hourly Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Last Sync Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Last Sync Time": {
+      "main": [
+        [
+          {
+            "node": "Fetch Salesforce Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Salesforce Contacts": {
+      "main": [
+        [
+          {
+            "node": "Transform Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform Data": {
+      "main": [
+        [
+          {
+            "node": "Upsert to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Update Sync Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Sync Metadata": {
+      "main": [
+        [
+          {
+            "node": "Notify Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "error-handler"
+  },
+  "staticData": null,
+  "tags": ["data-integration", "salesforce", "postgresql", "crm"],
+  "triggerCount": 1,
+  "updatedAt": "2025-11-08T00:00:00.000Z",
+  "versionId": "1.0.0"
+}
