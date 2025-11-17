@@ -1,0 +1,133 @@
+{
+  "name": "n8n Workflow Builder v2.0 - Backup Version",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "workflow-builder-v2",
+        "formTitle": "n8n Workflow Builder v2.0",
+        "formDescription": "Previous stable version for rollback",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Client Brief",
+              "fieldType": "textarea",
+              "requiredField": true,
+              "placeholder": "Describe your workflow requirements..."
+            },
+            {
+              "fieldLabel": "Your Email",
+              "fieldType": "email",
+              "requiredField": true,
+              "placeholder": "your@email.com"
+            }
+          ]
+        },
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "form-trigger",
+      "name": "Form Trigger",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Basic validation and processing\nconst input = items[0].json;\n\nconst result = {\n  clientBrief: input['Client Brief'],\n  clientEmail: input['Your Email'],\n  timestamp: new Date().toISOString(),\n  version: '2.0'\n};\n\n// Basic validation\nif (!result.clientEmail || !result.clientEmail.includes('@')) {\n  return [{json: {error: true, message: 'Invalid email'}}];\n}\n\nif (!result.clientBrief || result.clientBrief.length < 10) {\n  return [{json: {error: true, message: 'Brief too short'}}];\n}\n\nreturn [{json: result}];"
+      },
+      "id": "validator",
+      "name": "Validator",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.example.com/generate",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{JSON.stringify($json)}}"
+      },
+      "id": "generator",
+      "name": "Workflow Generator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [650, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{$json.clientEmail}}",
+        "subject": "Your n8n Workflow v2.0",
+        "messageType": "text",
+        "message": "Your workflow has been generated."
+      },
+      "id": "emailer",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [850, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-oauth2",
+          "name": "Gmail OAuth2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Form Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validator": {
+      "main": [
+        [
+          {
+            "node": "Workflow Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Generator": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "workflow-builder-v2-backup",
+  "version": "2.0.0"
+}

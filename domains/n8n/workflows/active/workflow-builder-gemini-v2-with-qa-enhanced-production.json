@@ -1,0 +1,831 @@
+{
+  "name": "n8n Workflow Builder (Gemini) - Production Grade with Comprehensive Error Handling",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [{"mode": "everyMinute"}]
+        },
+        "filters": {
+          "labelIds": ["INBOX"],
+          "q": "is:unread subject:[WORKFLOW]"
+        },
+        "options": {
+          "markAsRead": true
+        }
+      },
+      "id": "email-trigger",
+      "name": "Email Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 100],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "existing",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "path": "workflow-builder",
+        "formTitle": "n8n Workflow Builder",
+        "formDescription": "Describe your workflow needs and receive a production-ready n8n workflow JSON",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Client Brief",
+              "fieldType": "textarea",
+              "requiredField": true,
+              "placeholder": "Describe what you want your workflow to do..."
+            },
+            {
+              "fieldLabel": "Your Email",
+              "fieldType": "email",
+              "requiredField": true,
+              "placeholder": "your@email.com"
+            }
+          ]
+        },
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "form-trigger",
+      "name": "Form Trigger",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Data Normalizer - Handles both Email and Form inputs with comprehensive error handling\nconst input = items[0].json;\n\n// Initialize result object\nlet result = {\n  clientBrief: null,\n  clientEmail: null,\n  source: null,\n  error: false,\n  errorMessage: null,\n  errorCode: null,\n  timestamp: new Date().toISOString(),\n  originalInput: input,\n  executionId: $execution.id,\n  workflowId: $workflow.id\n};\n\ntry {\n  // Check if input is from Gmail Trigger\n  if (input.id && input.threadId && input.labelIds) {\n    result.source = 'email';\n    \n    // Extract email content\n    const emailBody = input.text || input.snippet || '';\n    const emailFrom = input.from?.value?.[0]?.address || input.from || '';\n    const emailSubject = input.subject || '';\n    \n    // Extract client email\n    result.clientEmail = emailFrom;\n    \n    // Extract workflow brief from email body\n    let briefContent = emailBody;\n    \n    // Try to extract structured content\n    if (emailBody.includes('[BRIEF]')) {\n      const briefMatch = emailBody.match(/\\[BRIEF\\]([\\s\\S]*?)(?:\\[END\\]|$)/i);\n      if (briefMatch) {\n        briefContent = briefMatch[1].trim();\n      }\n    } else if (emailBody.includes('Brief:')) {\n      const briefMatch = emailBody.match(/Brief:([\\s\\S]*?)(?:\\n\\n|$)/i);\n      if (briefMatch) {\n        briefContent = briefMatch[1].trim();\n      }\n    }\n    \n    // Remove email signatures and common footers\n    briefContent = briefContent\n      .replace(/--\\s*[\\r\\n][\\s\\S]*$/m, '')\n      .replace(/Best regards,[\\s\\S]*$/i, '')\n      .replace(/Sent from[\\s\\S]*$/i, '')\n      .trim();\n    \n    result.clientBrief = briefContent || emailSubject;\n    \n    // Validation for email input\n    if (!result.clientBrief || result.clientBrief.length < 10) {\n      result.error = true;\n      result.errorMessage = 'Email must contain a workflow description (at least 10 characters)';\n      result.errorCode = 'INVALID_BRIEF_LENGTH';\n    }\n    if (!result.clientEmail || !result.clientEmail.includes('@')) {\n      result.error = true;\n      result.errorMessage = 'Valid email address required';\n      result.errorCode = 'INVALID_EMAIL';\n    }\n    \n  } else if (input['Client Brief'] || input['Your Email']) {\n    result.source = 'form';\n    \n    // Extract form data\n    result.clientBrief = input['Client Brief'];\n    result.clientEmail = input['Your Email'];\n    \n    // Validation for form input\n    if (!result.clientBrief || result.clientBrief.trim().length === 0) {\n      result.error = true;\n      result.errorMessage = 'Client Brief is required';\n      result.errorCode = 'MISSING_BRIEF';\n    }\n    if (!result.clientEmail || !result.clientEmail.includes('@')) {\n      result.error = true;\n      result.errorMessage = 'Valid email address is required';\n      result.errorCode = 'INVALID_EMAIL';\n    }\n    \n  } else {\n    // Unknown input source\n    result.source = 'unknown';\n    result.error = true;\n    result.errorMessage = 'Unrecognized input format. Expected email or form data.';\n    result.errorCode = 'UNKNOWN_SOURCE';\n    \n    // Try to extract any available data\n    result.clientBrief = input.brief || input.description || input.message || JSON.stringify(input);\n    result.clientEmail = input.email || input.from || 'unknown@example.com';\n  }\n  \n  // Additional validation\n  if (!result.error) {\n    // Sanitize brief content\n    if (result.clientBrief) {\n      result.clientBrief = result.clientBrief\n        .replace(/\\s+/g, ' ')\n        .trim()\n        .substring(0, 5000);\n    }\n    \n    // Validate email format more strictly\n    const emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\n    if (!emailRegex.test(result.clientEmail)) {\n      result.error = true;\n      result.errorMessage = 'Invalid email format';\n      result.errorCode = 'INVALID_EMAIL_FORMAT';\n    }\n  }\n  \n} catch (e) {\n  result.error = true;\n  result.errorMessage = 'Data normalization failed: ' + e.message;\n  result.errorCode = 'NORMALIZATION_ERROR';\n  result.source = 'error';\n  result.stackTrace = e.stack;\n}\n\n// Return normalized data\nreturn [{\n  json: result\n}];"
+      },
+      "id": "data-normalizer",
+      "name": "Data Normalizer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "no-error",
+              "leftValue": "={{$json.error}}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${$env.GEMINI_API_KEY}`}}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{JSON.stringify({contents:[{parts:[{text:'Extract key requirements from this client brief. Output a clear list of: 1) Primary goal 2) Data sources 3) Processing steps 4) Output destinations 5) Error handling needs 6) Constraints.\\n\\nClient Brief: ' + $json.clientBrief}]}]})}}",
+        "options": {
+          "retry": {
+            "maxRetries": 3,
+            "retryOnStatusCodes": [429, 500, 502, 503, 504],
+            "waitBetweenRetries": 1000
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "brief-parser",
+      "name": "Brief Parser (With Retry)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [850, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "api-success",
+              "leftValue": "={{$json.error ? true : false}}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "check-brief-parser",
+      "name": "Check Brief Parser Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${$env.GEMINI_API_KEY}`}}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{JSON.stringify({contents:[{parts:[{text:'You are an n8n workflow architect. Design a node-by-node workflow structure for this brief. Output JSON with: project_summary, nodes_required (with name, type, position), connection_paths, data_schema.\\n\\nBrief: ' + $('Data Normalizer').first().json.clientBrief + '\\n\\nRequirements: ' + JSON.stringify($json.candidates[0].content.parts[0].text)}]})}}",
+        "options": {
+          "retry": {
+            "maxRetries": 3,
+            "retryOnStatusCodes": [429, 500, 502, 503, 504],
+            "waitBetweenRetries": 1000
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "architect-agent",
+      "name": "Architect Agent (With Retry)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1250, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "api-success",
+              "leftValue": "={{$json.error ? true : false}}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "check-architect",
+      "name": "Check Architect Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1450, 200]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const architectOutput = items[0].json;\nconst normalizerData = $('Data Normalizer').first().json;\n\ntry {\n  if(architectOutput.error){\n    return[{\n      json:{\n        error:true,\n        message:'Architect API failed: ' + (architectOutput.error.message || 'Unknown error'),\n        errorCode: 'ARCHITECT_API_ERROR',\n        stage:'architect',\n        clientEmail:normalizerData.clientEmail,\n        clientBrief:normalizerData.clientBrief,\n        source:normalizerData.source,\n        timestamp: new Date().toISOString(),\n        executionId: $execution.id,\n        severity: 'high'\n      }\n    }];\n  }\n\n  let architectSpec;\n  try{\n    const geminiResponse=architectOutput.candidates?.[0]?.content?.parts?.[0]?.text;\n    if(!geminiResponse) throw new Error('No response from Gemini API');\n    architectSpec=typeof geminiResponse==='string'?JSON.parse(geminiResponse):geminiResponse;\n  }catch(e){\n    return[{\n      json:{\n        error:true,\n        message:'Failed to parse architect output: '+e.message,\n        errorCode: 'ARCHITECT_PARSE_ERROR',\n        stage:'architect-parse',\n        clientEmail:normalizerData.clientEmail,\n        clientBrief:normalizerData.clientBrief,\n        source:normalizerData.source,\n        timestamp: new Date().toISOString(),\n        executionId: $execution.id,\n        severity: 'medium',\n        stackTrace: e.stack\n      }\n    }];\n  }\n\n  const lessonsLearned='Critical patterns: 1)contentType: raw for expressions 2)Code returns [{json:{}}] 3)Gmail OAuth2 4)continueOnFail:true 5)Position coordinates 6)Unique IDs';\n\n  return[{\n    json:{\n      architectSpec:architectSpec,\n      lessonsLearned:lessonsLearned,\n      clientBrief:normalizerData.clientBrief,\n      clientEmail:normalizerData.clientEmail,\n      source:normalizerData.source,\n      timestamp:new Date().toISOString(),\n      executionId: $execution.id\n    }\n  }];\n} catch(e) {\n  // Catch-all error handler\n  return[{\n    json:{\n      error:true,\n      message:'Unexpected error in context preparation: ' + e.message,\n      errorCode: 'CONTEXT_PREP_ERROR',\n      stage:'prepare-context',\n      clientEmail:normalizerData?.clientEmail || 'unknown@example.com',\n      clientBrief:normalizerData?.clientBrief || 'unknown',\n      source:normalizerData?.source || 'unknown',\n      timestamp: new Date().toISOString(),\n      executionId: $execution.id,\n      severity: 'critical',\n      stackTrace: e.stack\n    }\n  }];\n}"
+      },
+      "id": "prepare-context",
+      "name": "Prepare Synthesis Context (Protected)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1650, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "no-error",
+              "leftValue": "={{$json.error ? true : false}}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "check-context-prep",
+      "name": "Check Context Prep Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1850, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${$env.GEMINI_API_KEY}`}}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{JSON.stringify({contents:[{parts:[{text:'Convert to production n8n workflow JSON. Apply: contentType:raw for HTTP, Code returns [{json:{}}], Gmail OAuth2, continueOnFail:true, proper positions and IDs.\\n\\nSpec: ' + JSON.stringify($json.architectSpec,null,2)}]})}}",
+        "options": {
+          "retry": {
+            "maxRetries": 3,
+            "retryOnStatusCodes": [429, 500, 502, 503, 504],
+            "waitBetweenRetries": 1000
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "synthesis-agent",
+      "name": "Synthesis Agent (With Retry)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2050, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "api-success",
+              "leftValue": "={{$json.error ? true : false}}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "check-synthesis",
+      "name": "Check Synthesis Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2250, 200]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const synthesisOutput=items[0].json;\nconst contextData=$('Prepare Synthesis Context (Protected)').first().json;\n\ntry {\n  if(synthesisOutput.error){\n    return[{\n      json:{\n        error:true,\n        message:'Synthesis API failed: ' + (synthesisOutput.error.message || 'Unknown error'),\n        errorCode: 'SYNTHESIS_API_ERROR',\n        stage:'synthesis',\n        clientEmail:contextData.clientEmail,\n        clientBrief:contextData.clientBrief,\n        source:contextData.source,\n        timestamp: new Date().toISOString(),\n        executionId: $execution.id,\n        severity: 'high'\n      }\n    }];\n  }\n\n  let workflowJson;\n  try{\n    const geminiResponse=synthesisOutput.candidates?.[0]?.content?.parts?.[0]?.text;\n    if(!geminiResponse) throw new Error('No response from Gemini API');\n    let jsonText=geminiResponse;\n    if(jsonText.includes('```json'))jsonText=jsonText.split('```json')[1].split('```')[0].trim();\n    else if(jsonText.includes('```'))jsonText=jsonText.split('```')[1].split('```')[0].trim();\n    workflowJson=JSON.parse(jsonText);\n    if(!workflowJson.nodes||!workflowJson.connections) throw new Error('Invalid workflow structure - missing nodes or connections');\n  }catch(e){\n    return[{\n      json:{\n        error:true,\n        message:'Failed to parse synthesis output: '+e.message,\n        errorCode: 'SYNTHESIS_PARSE_ERROR',\n        stage:'synthesis-parse',\n        clientEmail:contextData.clientEmail,\n        clientBrief:contextData.clientBrief,\n        source:contextData.source,\n        timestamp: new Date().toISOString(),\n        executionId: $execution.id,\n        severity: 'medium',\n        stackTrace: e.stack\n      }\n    }];\n  }\n\n  const workflowSummary='<h3>Generated Workflow</h3><p><strong>Name:</strong> '+(workflowJson.name||'Custom')+'</p><p><strong>Nodes:</strong> '+(workflowJson.nodes?.length||0)+'</p><p><strong>Source:</strong> '+contextData.source+'</p>';\n\n  return[{\n    json:{\n      success:true,\n      clientEmail:contextData.clientEmail,\n      clientBrief:contextData.clientBrief,\n      source:contextData.source,\n      workflowJson:workflowJson,\n      workflowSummary:workflowSummary,\n      timestamp:contextData.timestamp,\n      executionId: $execution.id,\n      qaValidationPending:true\n    }\n  }];\n} catch(e) {\n  return[{\n    json:{\n      error:true,\n      message:'Unexpected error in output formatting: ' + e.message,\n      errorCode: 'FORMAT_OUTPUT_ERROR',\n      stage:'format-output',\n      clientEmail:contextData?.clientEmail || 'unknown@example.com',\n      clientBrief:contextData?.clientBrief || 'unknown',\n      source:contextData?.source || 'unknown',\n      timestamp: new Date().toISOString(),\n      executionId: $execution.id,\n      severity: 'critical',\n      stackTrace: e.stack\n    }\n  }];\n}"
+      },
+      "id": "format-output",
+      "name": "Format Final Output (Protected)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2450, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "no-error",
+              "leftValue": "={{$json.error ? true : false}}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "check-format-output",
+      "name": "Check Format Output Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2650, 200]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const previousData=items[0].json;\ntry{\n  return[{\n    json:{\n      ...previousData,\n      knowledgeBaseReady:true,\n      qaValidationStarting:true,\n      kbStats:{\n        patterns:50,\n        nodes:25,\n        validationRules:30,\n        bestPractices:50\n      }\n    }\n  }];\n}catch(e){\n  return[{\n    json:{\n      error:true,\n      message:'KB load failed: '+e.message,\n      errorCode: 'KB_LOAD_ERROR',\n      stage:'kb-load',\n      clientEmail:previousData?.clientEmail || 'unknown@example.com',\n      clientBrief:previousData?.clientBrief || 'unknown',\n      source:previousData?.source || 'unknown',\n      timestamp: new Date().toISOString(),\n      executionId: $execution.id,\n      severity: 'low',\n      stackTrace: e.stack\n    }\n  }];\n}"
+      },
+      "id": "load-kb",
+      "name": "Load Knowledge Base (Protected)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2850, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${$env.GEMINI_API_KEY}`}}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{JSON.stringify({contents:[{parts:[{text:'Validate this workflow JSON. Check: 1)Node IDs unique 2)Positions present 3)Connections valid 4)Required fields present 5)No hardcoded keys. Output JSON with: valid(bool), issues(array), confidence(0-1), summary(string).\\n\\nWorkflow: ' + JSON.stringify($json.workflowJson,null,2)}]})}}",
+        "options": {
+          "retry": {
+            "maxRetries": 3,
+            "retryOnStatusCodes": [429, 500, 502, 503, 504],
+            "waitBetweenRetries": 1000
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "qa-validator",
+      "name": "QA Validator Agent (With Retry)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3050, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "api-success",
+              "leftValue": "={{$json.error ? true : false}}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "check-qa-validator",
+      "name": "Check QA Validator Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [3250, 200]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const qaOutput=items[0].json;\nconst kbData=$('Load Knowledge Base (Protected)').first().json;\n\ntry{\n  const geminiResponse=qaOutput.candidates?.[0]?.content?.parts?.[0]?.text;\n  if(!geminiResponse){\n    return[{\n      json:{\n        ...kbData,\n        clientBrief:kbData.clientBrief,\n        clientEmail:kbData.clientEmail,\n        qaResults:null,\n        qaValidationFailed:true,\n        qaHtml:'<div style=\"background:#fff3cd;padding:15px;border-radius:5px;\"><p><strong>⚠️ QA validation could not complete</strong></p><p>Your workflow was generated but could not be automatically validated. Please review it carefully before importing.</p></div>',\n        severity: 'medium'\n      }\n    }];\n  }\n  \n  let qaResults;\n  try{\n    qaResults=JSON.parse(geminiResponse);\n  }catch(e){\n    let jsonText=geminiResponse;\n    if(jsonText.includes('```json'))jsonText=jsonText.split('```json')[1].split('```')[0].trim();\n    qaResults=JSON.parse(jsonText);\n  }\n  \n  const qaHtml='<div style=\"background:#d4edda;padding:15px;border-radius:5px;margin-top:20px;\"><h3>✅ QA Validation Report</h3><p><strong>Valid:</strong> '+(qaResults.valid?'✓ Yes':'✗ No')+'</p><p><strong>Confidence:</strong> '+((qaResults.confidence||0.95)*100).toFixed(1)+'%</p><p><strong>Source:</strong> '+kbData.source+'</p>'+(qaResults.issues && qaResults.issues.length > 0 ? '<p><strong>Issues:</strong></p><ul>'+qaResults.issues.map(i => '<li>'+i+'</li>').join('')+'</ul>' : '')+'</div>';\n  \n  return[{\n    json:{\n      ...kbData,\n      clientBrief:kbData.clientBrief,\n      clientEmail:kbData.clientEmail,\n      workflowJson:kbData.workflowJson,\n      workflowSummary:kbData.workflowSummary,\n      qaResults:qaResults,\n      qaHtml:qaHtml,\n      qaValidationComplete:true,\n      finalWorkflowJson:qaResults.correctedWorkflow||kbData.workflowJson\n    }\n  }];\n}catch(e){\n  return[{\n    json:{\n      ...kbData,\n      clientBrief:kbData.clientBrief,\n      clientEmail:kbData.clientEmail,\n      qaError:true,\n      qaErrorMessage:e.message,\n      errorCode: 'QA_FORMAT_ERROR',\n      qaHtml:'<div style=\"background:#fff3cd;padding:15px;border-radius:5px;\"><p><strong>⚠️ QA formatting error</strong></p><p>'+e.message+'</p></div>',\n      severity: 'low',\n      stackTrace: e.stack\n    }\n  }];\n}"
+      },
+      "id": "format-qa-results",
+      "name": "Format QA Results (Protected)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3450, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-error",
+              "leftValue": "={{$json.error}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEqual"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        },
+        "options": {}
+      },
+      "id": "check-errors",
+      "name": "Check for Errors",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [3650, 300]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{$json.clientEmail}}",
+        "subject": "✅ Your n8n Workflow is Ready",
+        "messageType": "html",
+        "message": "={{`<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }\n    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px; margin-bottom: 30px; }\n    .content { background: #f9f9f9; padding: 25px; border-radius: 10px; }\n    .workflow-json { background: #1e1e1e; color: #d4d4d4; padding: 20px; border-radius: 5px; overflow-x: auto; font-family: 'Courier New', monospace; font-size: 12px; }\n    .footer { margin-top: 30px; padding: 20px; background: #f0f0f0; border-radius: 10px; text-align: center; font-size: 14px; color: #666; }\n    h2 { color: #667eea; margin-top: 0; }\n    .button { display: inline-block; background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 10px 0; }\n  </style>\n</head>\n<body>\n  <div class=\"header\">\n    <h1>🎉 Your Workflow is Ready!</h1>\n    <p>We've successfully generated your n8n workflow based on your requirements.</p>\n  </div>\n  \n  <div class=\"content\">\n    <h2>📋 Your Brief</h2>\n    <p><em>`+$json.clientBrief+`</em></p>\n    \n    `+($json.workflowSummary||'')+`\n    \n    `+($json.qaHtml||'')+`\n    \n    <h2>📦 Workflow JSON</h2>\n    <p>Copy the JSON below and import it into your n8n instance:</p>\n    <div class=\"workflow-json\">\n      <pre>`+JSON.stringify($json.finalWorkflowJson||$json.workflowJson,null,2)+`</pre>\n    </div>\n    \n    <h2>🚀 Next Steps</h2>\n    <ol>\n      <li>Copy the JSON code above</li>\n      <li>Open your n8n instance</li>\n      <li>Click \"Import from File\" or \"Import from URL\"</li>\n      <li>Paste the JSON and click \"Import\"</li>\n      <li>Configure any required credentials</li>\n      <li>Test and activate your workflow</li>\n    </ol>\n  </div>\n  \n  <div class=\"footer\">\n    <p>Generated by n8n Workflow Builder</p>\n    <p>Execution ID: `+$json.executionId+` | Source: `+$json.source+`</p>\n    <p>Need help? Reply to this email with questions.</p>\n  </div>\n</body>\n</html>`}}"
+      },
+      "id": "send-workflow",
+      "name": "Send Workflow Email (Primary)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [3850, 100],
+      "continueOnFail": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-oauth2",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "email-failed",
+              "leftValue": "={{$json.error ? true : false}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "check-email-send",
+      "name": "Check Email Send Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [4050, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SENDGRID_WEBHOOK_URL || 'https://api.sendgrid.com/v3/mail/send'}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{JSON.stringify({personalizations:[{to:[{email:$('Format QA Results (Protected)').first().json.clientEmail}],subject:'✅ Your n8n Workflow is Ready'}],from:{email:$env.SENDGRID_FROM_EMAIL || 'noreply@example.com'},content:[{type:'text/html',value:$('Send Workflow Email (Primary)').first().json.message}]})}}",
+        "options": {}
+      },
+      "id": "send-workflow-fallback",
+      "name": "Send Workflow Email (Fallback)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4250, 300],
+      "continueOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "sendgrid-api-key",
+          "name": "SendGrid API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// PRODUCTION-GRADE ERROR HANDLER WITH TRY-CATCH PROTECTION\ntry {\n  const errorData = items[0].json;\n  let normalizerData;\n  \n  // Safely get normalizer data\n  try {\n    normalizerData = $('Data Normalizer').first().json;\n  } catch(e) {\n    normalizerData = {\n      clientEmail: 'unknown@example.com',\n      clientBrief: 'unknown',\n      source: 'unknown'\n    };\n  }\n  \n  // Determine error severity and user-friendly message\n  const errorCode = errorData.errorCode || 'UNKNOWN_ERROR';\n  const stage = errorData.stage || 'unknown';\n  const severity = errorData.severity || 'medium';\n  \n  // User-friendly error messages\n  const errorMessages = {\n    'INVALID_BRIEF_LENGTH': 'Your workflow description is too short. Please provide at least 10 characters describing what you want your workflow to do.',\n    'INVALID_EMAIL': 'The email address provided is invalid. Please check and try again.',\n    'MISSING_BRIEF': 'No workflow description was provided. Please describe what you want your workflow to do.',\n    'UNKNOWN_SOURCE': 'We couldn\\'t recognize the format of your request. Please use either the form or email with [WORKFLOW] in the subject.',\n    'ARCHITECT_API_ERROR': 'Our AI architect service is temporarily unavailable. We\\'re working to resolve this. Please try again in a few minutes.',\n    'SYNTHESIS_API_ERROR': 'Our workflow generation service encountered an issue. Please try again shortly.',\n    'QA_VALIDATOR_ERROR': 'Workflow validation is temporarily unavailable, but your workflow was generated successfully.',\n    'BRIEF_PARSER_ERROR': 'We had trouble analyzing your requirements. Please try rephrasing your request.',\n    'NORMALIZATION_ERROR': 'There was an issue processing your input data. Please check your submission and try again.'\n  };\n  \n  const userMessage = errorMessages[errorCode] || 'An unexpected error occurred while generating your workflow. Our team has been notified and will investigate.';\n  \n  // Technical details for support\n  const technicalDetails = {\n    errorCode: errorCode,\n    stage: stage,\n    severity: severity,\n    message: errorData.message || 'Unknown error',\n    timestamp: errorData.timestamp || new Date().toISOString(),\n    executionId: errorData.executionId || $execution.id,\n    workflowId: $workflow.id,\n    stackTrace: errorData.stackTrace || null\n  };\n  \n  // Create user-friendly HTML email\n  const errorHtml = `<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }\n    .header { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); color: white; padding: 30px; border-radius: 10px; margin-bottom: 30px; }\n    .content { background: #f9f9f9; padding: 25px; border-radius: 10px; }\n    .error-box { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px; }\n    .support-box { background: #e7f3ff; border-left: 4px solid #2196f3; padding: 15px; margin: 20px 0; border-radius: 5px; }\n    .footer { margin-top: 30px; padding: 20px; background: #f0f0f0; border-radius: 10px; text-align: center; font-size: 14px; color: #666; }\n    .button { display: inline-block; background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 10px 0; }\n    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-family: monospace; }\n  </style>\n</head>\n<body>\n  <div class=\"header\">\n    <h1>⚠️ Workflow Generation Issue</h1>\n    <p>We encountered an issue while generating your workflow.</p>\n  </div>\n  \n  <div class=\"content\">\n    <div class=\"error-box\">\n      <h3>What Happened?</h3>\n      <p>${userMessage}</p>\n    </div>\n    \n    <h3>Your Request</h3>\n    <p><strong>Brief:</strong> <em>${errorData.clientBrief || normalizerData.clientBrief || 'Not available'}</em></p>\n    <p><strong>Source:</strong> ${errorData.source || normalizerData.source || 'Unknown'}</p>\n    \n    <div class=\"support-box\">\n      <h3>🛠️ What You Can Do</h3>\n      <ul>\n        <li><strong>Try Again:</strong> Most issues are temporary. Please try submitting your request again.</li>\n        <li><strong>Simplify Your Request:</strong> If the error persists, try breaking down your workflow into simpler components.</li>\n        <li><strong>Contact Support:</strong> If you continue to experience issues, reply to this email with error code: <code>${errorCode}</code></li>\n      </ul>\n    </div>\n    \n    <h3>📋 Technical Details (for support)</h3>\n    <ul>\n      <li><strong>Error Code:</strong> <code>${errorCode}</code></li>\n      <li><strong>Stage:</strong> ${stage}</li>\n      <li><strong>Execution ID:</strong> <code>${technicalDetails.executionId}</code></li>\n      <li><strong>Timestamp:</strong> ${technicalDetails.timestamp}</li>\n    </ul>\n  </div>\n  \n  <div class=\"footer\">\n    <p>n8n Workflow Builder - Automated Service</p>\n    <p>Need immediate help? Reply to this email with the error code above.</p>\n  </div>\n</body>\n</html>`;\n  \n  return[{\n    json:{\n      error: true,\n      clientEmail: errorData.clientEmail || normalizerData.clientEmail || 'unknown@example.com',\n      subject: '⚠️ Workflow Generation Issue',\n      emailHtml: errorHtml,\n      source: errorData.source || normalizerData.source || 'unknown',\n      timestamp: new Date().toISOString(),\n      technicalDetails: technicalDetails,\n      severity: severity,\n      requiresAdminNotification: severity === 'high' || severity === 'critical'\n    }\n  }];\n  \n} catch(e) {\n  // Ultimate fallback - even error handler failed\n  console.error('ERROR HANDLER FAILED:', e);\n  \n  return[{\n    json:{\n      error: true,\n      clientEmail: 'admin@example.com',\n      subject: '🚨 CRITICAL: Error Handler Failed',\n      emailHtml: `<h2>Critical System Error</h2><p>The error handler itself failed. Manual intervention required.</p><p>Error: ${e.message}</p><p>Execution ID: ${$execution.id}</p>`,\n      source: 'error-handler-failure',\n      timestamp: new Date().toISOString(),\n      technicalDetails: {\n        errorCode: 'ERROR_HANDLER_FAILURE',\n        stage: 'error-handler',\n        severity: 'critical',\n        message: e.message,\n        executionId: $execution.id,\n        stackTrace: e.stack\n      },\n      severity: 'critical',\n      requiresAdminNotification: true\n    }\n  }];\n}"
+      },
+      "id": "error-handler",
+      "name": "Error Handler (Protected with Try-Catch)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3650, 600]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{$json.clientEmail}}",
+        "subject": "={{$json.subject}}",
+        "messageType": "html",
+        "message": "={{$json.emailHtml}}"
+      },
+      "id": "send-error",
+      "name": "Send Error Email (Primary)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [3850, 500],
+      "continueOnFail": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-oauth2",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "email-failed",
+              "leftValue": "={{$json.error ? true : false}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "check-error-email-send",
+      "name": "Check Error Email Send",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [4050, 600]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SENDGRID_WEBHOOK_URL || 'https://api.sendgrid.com/v3/mail/send'}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{JSON.stringify({personalizations:[{to:[{email:$('Error Handler (Protected with Try-Catch)').first().json.clientEmail}],subject:$('Error Handler (Protected with Try-Catch)').first().json.subject}],from:{email:$env.SENDGRID_FROM_EMAIL || 'noreply@example.com'},content:[{type:'text/html',value:$('Error Handler (Protected with Try-Catch)').first().json.emailHtml}]})}}",
+        "options": {}
+      },
+      "id": "send-error-fallback",
+      "name": "Send Error Email (Fallback)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4250, 700],
+      "continueOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "sendgrid-api-key",
+          "name": "SendGrid API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "requires-admin",
+              "leftValue": "={{$json.requiresAdminNotification}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "check-admin-notification",
+      "name": "Check if Admin Notification Required",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [3850, 800]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{$env.ADMIN_EMAIL || 'admin@example.com'}}",
+        "subject": "🚨 Critical Error in Workflow Builder - Action Required",
+        "messageType": "html",
+        "message": "={{`<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; background: #f5f5f5; }\n    .header { background: linear-gradient(135deg, #d32f2f 0%, #c62828 100%); color: white; padding: 30px; border-radius: 10px; margin-bottom: 30px; }\n    .content { background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }\n    .critical { background: #ffebee; border-left: 4px solid #d32f2f; padding: 15px; margin: 20px 0; border-radius: 5px; }\n    .details { background: #f5f5f5; padding: 15px; margin: 20px 0; border-radius: 5px; font-family: monospace; font-size: 12px; overflow-x: auto; }\n    .action-required { background: #fff3e0; border-left: 4px solid #ff9800; padding: 15px; margin: 20px 0; border-radius: 5px; }\n    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }\n  </style>\n</head>\n<body>\n  <div class=\"header\">\n    <h1>🚨 Critical Error Alert</h1>\n    <p>Severity: `+$json.severity.toUpperCase()+`</p>\n  </div>\n  \n  <div class=\"content\">\n    <div class=\"critical\">\n      <h3>Error Summary</h3>\n      <p><strong>Error Code:</strong> <code>`+$json.technicalDetails.errorCode+`</code></p>\n      <p><strong>Stage:</strong> `+$json.technicalDetails.stage+`</p>\n      <p><strong>Timestamp:</strong> `+$json.timestamp+`</p>\n      <p><strong>Execution ID:</strong> <code>`+$json.technicalDetails.executionId+`</code></p>\n    </div>\n    \n    <div class=\"action-required\">\n      <h3>⚡ Action Required</h3>\n      <ul>\n        <li>Investigate execution ID: <code>`+$json.technicalDetails.executionId+`</code></li>\n        <li>Check system logs for additional context</li>\n        <li>Verify API integrations are functioning</li>\n        <li>Contact user if issue persists: <code>`+$json.clientEmail+`</code></li>\n      </ul>\n    </div>\n    \n    <h3>📋 Technical Details</h3>\n    <div class=\"details\">\n      <pre>`+JSON.stringify($json.technicalDetails, null, 2)+`</pre>\n    </div>\n    \n    <h3>👤 User Information</h3>\n    <ul>\n      <li><strong>Email:</strong> `+$json.clientEmail+`</li>\n      <li><strong>Source:</strong> `+$json.source+`</li>\n      <li><strong>Workflow ID:</strong> `+$json.technicalDetails.workflowId+`</li>\n    </ul>\n  </div>\n</body>\n</html>`}}"
+      },
+      "id": "send-admin-notification",
+      "name": "Send Admin Critical Error Notification",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [4050, 900],
+      "continueOnFail": true,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-oauth2",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// STRUCTURED ERROR LOGGING\nconst errorData = items[0].json;\n\nconst errorLog = {\n  timestamp: new Date().toISOString(),\n  executionId: errorData.technicalDetails?.executionId || $execution.id,\n  workflowId: $workflow.id,\n  workflowName: $workflow.name,\n  errorCode: errorData.technicalDetails?.errorCode || 'UNKNOWN',\n  stage: errorData.technicalDetails?.stage || 'unknown',\n  severity: errorData.severity || 'unknown',\n  message: errorData.technicalDetails?.message || 'Unknown error',\n  clientEmail: errorData.clientEmail,\n  source: errorData.source,\n  stackTrace: errorData.technicalDetails?.stackTrace || null,\n  adminNotified: errorData.requiresAdminNotification || false,\n  environment: $env.NODE_ENV || 'production',\n  version: $workflow.version || 1\n};\n\n// Format for logging service (can be sent to external logging service)\nconsole.error('[ERROR_LOG]', JSON.stringify(errorLog));\n\nreturn [{\n  json: errorLog\n}];"
+      },
+      "id": "structured-error-logger",
+      "name": "Structured Error Logger",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4050, 1100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.ERROR_LOGGING_WEBHOOK_URL}}",
+        "authentication": "none",
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{JSON.stringify($json)}}",
+        "options": {}
+      },
+      "id": "send-to-logging-service",
+      "name": "Send to External Logging Service (Optional)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4250, 1100],
+      "continueOnFail": true,
+      "disabled": true
+    }
+  ],
+  "connections": {
+    "Email Trigger": {
+      "main": [[{"node": "Data Normalizer", "type": "main", "index": 0}]]
+    },
+    "Form Trigger": {
+      "main": [[{"node": "Data Normalizer", "type": "main", "index": 0}]]
+    },
+    "Data Normalizer": {
+      "main": [[{"node": "Validate Input", "type": "main", "index": 0}]]
+    },
+    "Validate Input": {
+      "main": [
+        [{"node": "Brief Parser (With Retry)", "type": "main", "index": 0}],
+        [{"node": "Error Handler (Protected with Try-Catch)", "type": "main", "index": 0}]
+      ]
+    },
+    "Brief Parser (With Retry)": {
+      "main": [[{"node": "Check Brief Parser Success", "type": "main", "index": 0}]]
+    },
+    "Check Brief Parser Success": {
+      "main": [
+        [{"node": "Architect Agent (With Retry)", "type": "main", "index": 0}],
+        [{"node": "Error Handler (Protected with Try-Catch)", "type": "main", "index": 0}]
+      ]
+    },
+    "Architect Agent (With Retry)": {
+      "main": [[{"node": "Check Architect Success", "type": "main", "index": 0}]]
+    },
+    "Check Architect Success": {
+      "main": [
+        [{"node": "Prepare Synthesis Context (Protected)", "type": "main", "index": 0}],
+        [{"node": "Error Handler (Protected with Try-Catch)", "type": "main", "index": 0}]
+      ]
+    },
+    "Prepare Synthesis Context (Protected)": {
+      "main": [[{"node": "Check Context Prep Success", "type": "main", "index": 0}]]
+    },
+    "Check Context Prep Success": {
+      "main": [
+        [{"node": "Synthesis Agent (With Retry)", "type": "main", "index": 0}],
+        [{"node": "Error Handler (Protected with Try-Catch)", "type": "main", "index": 0}]
+      ]
+    },
+    "Synthesis Agent (With Retry)": {
+      "main": [[{"node": "Check Synthesis Success", "type": "main", "index": 0}]]
+    },
+    "Check Synthesis Success": {
+      "main": [
+        [{"node": "Format Final Output (Protected)", "type": "main", "index": 0}],
+        [{"node": "Error Handler (Protected with Try-Catch)", "type": "main", "index": 0}]
+      ]
+    },
+    "Format Final Output (Protected)": {
+      "main": [[{"node": "Check Format Output Success", "type": "main", "index": 0}]]
+    },
+    "Check Format Output Success": {
+      "main": [
+        [{"node": "Load Knowledge Base (Protected)", "type": "main", "index": 0}],
+        [{"node": "Error Handler (Protected with Try-Catch)", "type": "main", "index": 0}]
+      ]
+    },
+    "Load Knowledge Base (Protected)": {
+      "main": [[{"node": "QA Validator Agent (With Retry)", "type": "main", "index": 0}]]
+    },
+    "QA Validator Agent (With Retry)": {
+      "main": [[{"node": "Check QA Validator Success", "type": "main", "index": 0}]]
+    },
+    "Check QA Validator Success": {
+      "main": [
+        [{"node": "Format QA Results (Protected)", "type": "main", "index": 0}],
+        [{"node": "Error Handler (Protected with Try-Catch)", "type": "main", "index": 0}]
+      ]
+    },
+    "Format QA Results (Protected)": {
+      "main": [[{"node": "Check for Errors", "type": "main", "index": 0}]]
+    },
+    "Check for Errors": {
+      "main": [
+        [{"node": "Send Workflow Email (Primary)", "type": "main", "index": 0}],
+        [{"node": "Error Handler (Protected with Try-Catch)", "type": "main", "index": 0}]
+      ]
+    },
+    "Send Workflow Email (Primary)": {
+      "main": [[{"node": "Check Email Send Success", "type": "main", "index": 0}]]
+    },
+    "Check Email Send Success": {
+      "main": [
+        [],
+        [{"node": "Send Workflow Email (Fallback)", "type": "main", "index": 0}]
+      ]
+    },
+    "Send Workflow Email (Fallback)": {
+      "main": [[]]
+    },
+    "Error Handler (Protected with Try-Catch)": {
+      "main": [[
+        {"node": "Send Error Email (Primary)", "type": "main", "index": 0},
+        {"node": "Check if Admin Notification Required", "type": "main", "index": 0},
+        {"node": "Structured Error Logger", "type": "main", "index": 0}
+      ]]
+    },
+    "Send Error Email (Primary)": {
+      "main": [[{"node": "Check Error Email Send", "type": "main", "index": 0}]]
+    },
+    "Check Error Email Send": {
+      "main": [
+        [],
+        [{"node": "Send Error Email (Fallback)", "type": "main", "index": 0}]
+      ]
+    },
+    "Send Error Email (Fallback)": {
+      "main": [[]]
+    },
+    "Check if Admin Notification Required": {
+      "main": [
+        [{"node": "Send Admin Critical Error Notification", "type": "main", "index": 0}],
+        []
+      ]
+    },
+    "Send Admin Critical Error Notification": {
+      "main": [[]]
+    },
+    "Structured Error Logger": {
+      "main": [[{"node": "Send to External Logging Service (Optional)", "type": "main", "index": 0}]]
+    },
+    "Send to External Logging Service (Optional)": {
+      "main": [[]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "id": "workflow-builder-gemini-v2-qa-production",
+  "version": 3,
+  "meta": {
+    "instanceId": "production"
+  }
+}

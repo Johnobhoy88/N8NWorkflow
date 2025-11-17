@@ -1,0 +1,989 @@
+{
+  "dashboard": {
+    "title": "n8n Workflow Builder - Production Monitoring",
+    "description": "Real-time monitoring dashboard for the AI-powered n8n Workflow Builder",
+    "version": "3.0",
+    "tags": ["n8n", "workflow-builder", "production", "ai"],
+    "timezone": "America/New_York",
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Overview",
+        "type": "row",
+        "collapsed": false
+      },
+      {
+        "id": 2,
+        "title": "Health Status",
+        "type": "stat",
+        "targets": [
+          {
+            "query": "SELECT status FROM health_checks WHERE workflow='workflow-builder-gemini-v2-production' ORDER BY timestamp DESC LIMIT 1",
+            "legendFormat": "Health Status"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              {
+                "type": "value",
+                "value": "healthy",
+                "text": "✓ Healthy",
+                "color": "green"
+              },
+              {
+                "type": "value",
+                "value": "degraded",
+                "text": "⚠ Degraded",
+                "color": "yellow"
+              },
+              {
+                "type": "value",
+                "value": "down",
+                "text": "✗ Down",
+                "color": "red"
+              }
+            ]
+          }
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 1,
+          "w": 6,
+          "h": 4
+        }
+      },
+      {
+        "id": 3,
+        "title": "Success Rate (24h)",
+        "type": "stat",
+        "targets": [
+          {
+            "query": "SELECT (COUNT(CASE WHEN error = false THEN 1 END) * 100.0 / COUNT(*)) as success_rate FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND timestamp > NOW() - INTERVAL '24 hours'",
+            "legendFormat": "Success Rate"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {
+              "steps": [
+                {
+                  "value": 0,
+                  "color": "red"
+                },
+                {
+                  "value": 90,
+                  "color": "yellow"
+                },
+                {
+                  "value": 95,
+                  "color": "green"
+                }
+              ]
+            }
+          }
+        },
+        "gridPos": {
+          "x": 6,
+          "y": 1,
+          "w": 6,
+          "h": 4
+        }
+      },
+      {
+        "id": 4,
+        "title": "Executions (24h)",
+        "type": "stat",
+        "targets": [
+          {
+            "query": "SELECT COUNT(*) as total_executions FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND timestamp > NOW() - INTERVAL '24 hours'",
+            "legendFormat": "Total Executions"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "thresholds"
+            }
+          }
+        },
+        "gridPos": {
+          "x": 12,
+          "y": 1,
+          "w": 6,
+          "h": 4
+        }
+      },
+      {
+        "id": 5,
+        "title": "Avg Execution Time",
+        "type": "stat",
+        "targets": [
+          {
+            "query": "SELECT AVG(duration_seconds) as avg_duration FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND timestamp > NOW() - INTERVAL '24 hours' AND error = false",
+            "legendFormat": "Avg Duration"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "thresholds": {
+              "steps": [
+                {
+                  "value": 0,
+                  "color": "green"
+                },
+                {
+                  "value": 100,
+                  "color": "yellow"
+                },
+                {
+                  "value": 150,
+                  "color": "red"
+                }
+              ]
+            }
+          }
+        },
+        "gridPos": {
+          "x": 18,
+          "y": 1,
+          "w": 6,
+          "h": 4
+        }
+      },
+      {
+        "id": 6,
+        "title": "Execution Trends",
+        "type": "row",
+        "collapsed": false
+      },
+      {
+        "id": 7,
+        "title": "Executions Over Time",
+        "type": "timeseries",
+        "targets": [
+          {
+            "query": "SELECT time_bucket('5 minutes', timestamp) as time, COUNT(*) as count FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' GROUP BY time ORDER BY time",
+            "legendFormat": "Total Executions"
+          },
+          {
+            "query": "SELECT time_bucket('5 minutes', timestamp) as time, COUNT(*) as count FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND error = false GROUP BY time ORDER BY time",
+            "legendFormat": "Successful"
+          },
+          {
+            "query": "SELECT time_bucket('5 minutes', timestamp) as time, COUNT(*) as count FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND error = true GROUP BY time ORDER BY time",
+            "legendFormat": "Failed"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "fillOpacity": 10
+            }
+          }
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 6,
+          "w": 24,
+          "h": 8
+        }
+      },
+      {
+        "id": 8,
+        "title": "Success Rate Over Time",
+        "type": "timeseries",
+        "targets": [
+          {
+            "query": "SELECT time_bucket('5 minutes', timestamp) as time, (COUNT(CASE WHEN error = false THEN 1 END) * 100.0 / COUNT(*)) as success_rate FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' GROUP BY time ORDER BY time",
+            "legendFormat": "Success Rate %"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "fillOpacity": 20
+            },
+            "thresholds": {
+              "steps": [
+                {
+                  "value": 0,
+                  "color": "red"
+                },
+                {
+                  "value": 95,
+                  "color": "green"
+                }
+              ]
+            }
+          }
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 14,
+          "w": 12,
+          "h": 8
+        }
+      },
+      {
+        "id": 9,
+        "title": "Execution Duration (95th Percentile)",
+        "type": "timeseries",
+        "targets": [
+          {
+            "query": "SELECT time_bucket('5 minutes', timestamp) as time, percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_seconds) as p95_duration FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND error = false GROUP BY time ORDER BY time",
+            "legendFormat": "95th Percentile"
+          },
+          {
+            "query": "SELECT time_bucket('5 minutes', timestamp) as time, AVG(duration_seconds) as avg_duration FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND error = false GROUP BY time ORDER BY time",
+            "legendFormat": "Average"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth"
+            },
+            "thresholds": {
+              "steps": [
+                {
+                  "value": 0,
+                  "color": "green"
+                },
+                {
+                  "value": 150,
+                  "color": "yellow"
+                },
+                {
+                  "value": 200,
+                  "color": "red"
+                }
+              ]
+            }
+          }
+        },
+        "gridPos": {
+          "x": 12,
+          "y": 14,
+          "w": 12,
+          "h": 8
+        }
+      },
+      {
+        "id": 10,
+        "title": "Error Analysis",
+        "type": "row",
+        "collapsed": false
+      },
+      {
+        "id": 11,
+        "title": "Error Rate by Stage",
+        "type": "bargauge",
+        "targets": [
+          {
+            "query": "SELECT stage, COUNT(*) as error_count FROM error_logs WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND timestamp > NOW() - INTERVAL '24 hours' GROUP BY stage ORDER BY error_count DESC",
+            "legendFormat": "{{stage}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "palette-classic"
+            }
+          }
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 22,
+          "w": 12,
+          "h": 8
+        }
+      },
+      {
+        "id": 12,
+        "title": "Error Severity Distribution",
+        "type": "piechart",
+        "targets": [
+          {
+            "query": "SELECT severity, COUNT(*) as count FROM error_logs WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND timestamp > NOW() - INTERVAL '24 hours' GROUP BY severity",
+            "legendFormat": "{{severity}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "displayLabels": ["name", "percent"]
+            },
+            "mappings": [
+              {
+                "type": "value",
+                "value": "HIGH",
+                "color": "red"
+              },
+              {
+                "type": "value",
+                "value": "MEDIUM",
+                "color": "yellow"
+              },
+              {
+                "type": "value",
+                "value": "LOW",
+                "color": "green"
+              }
+            ]
+          }
+        },
+        "gridPos": {
+          "x": 12,
+          "y": 22,
+          "w": 12,
+          "h": 8
+        }
+      },
+      {
+        "id": 13,
+        "title": "Recent Errors (Last 10)",
+        "type": "table",
+        "targets": [
+          {
+            "query": "SELECT timestamp, stage, severity, error_message, client_email FROM error_logs WHERE workflow_id = 'workflow-builder-gemini-v2-production' ORDER BY timestamp DESC LIMIT 10",
+            "legendFormat": "Recent Errors"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "auto",
+              "displayMode": "auto"
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "severity"
+              },
+              "properties": [
+                {
+                  "id": "mappings",
+                  "value": [
+                    {
+                      "type": "value",
+                      "value": "HIGH",
+                      "color": "red"
+                    },
+                    {
+                      "type": "value",
+                      "value": "MEDIUM",
+                      "color": "yellow"
+                    },
+                    {
+                      "type": "value",
+                      "value": "LOW",
+                      "color": "green"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 30,
+          "w": 24,
+          "h": 8
+        }
+      },
+      {
+        "id": 14,
+        "title": "Performance Metrics",
+        "type": "row",
+        "collapsed": false
+      },
+      {
+        "id": 15,
+        "title": "Stage Duration Breakdown",
+        "type": "timeseries",
+        "targets": [
+          {
+            "query": "SELECT time_bucket('5 minutes', timestamp) as time, AVG(CAST(metrics->>'briefParserDuration' AS FLOAT)) as brief_parser FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND metrics IS NOT NULL GROUP BY time ORDER BY time",
+            "legendFormat": "Brief Parser"
+          },
+          {
+            "query": "SELECT time_bucket('5 minutes', timestamp) as time, AVG(CAST(metrics->>'architectDuration' AS FLOAT)) as architect FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND metrics IS NOT NULL GROUP BY time ORDER BY time",
+            "legendFormat": "Architect Agent"
+          },
+          {
+            "query": "SELECT time_bucket('5 minutes', timestamp) as time, AVG(CAST(metrics->>'synthesisDuration' AS FLOAT)) as synthesis FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND metrics IS NOT NULL GROUP BY time ORDER BY time",
+            "legendFormat": "Synthesis Agent"
+          },
+          {
+            "query": "SELECT time_bucket('5 minutes', timestamp) as time, AVG(CAST(metrics->>'qaDuration' AS FLOAT)) as qa FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND metrics IS NOT NULL GROUP BY time ORDER BY time",
+            "legendFormat": "QA Validator"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "stacking": {
+                "mode": "normal"
+              }
+            }
+          }
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 38,
+          "w": 24,
+          "h": 8
+        }
+      },
+      {
+        "id": 16,
+        "title": "API Timeout Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "query": "SELECT (COUNT(CASE WHEN error_message LIKE '%timeout%' THEN 1 END) * 100.0 / COUNT(*)) as timeout_rate FROM error_logs WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND timestamp > NOW() - INTERVAL '24 hours'",
+            "legendFormat": "Timeout Rate"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {
+              "steps": [
+                {
+                  "value": 0,
+                  "color": "green"
+                },
+                {
+                  "value": 1,
+                  "color": "yellow"
+                },
+                {
+                  "value": 5,
+                  "color": "red"
+                }
+              ]
+            }
+          }
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 46,
+          "w": 6,
+          "h": 4
+        }
+      },
+      {
+        "id": 17,
+        "title": "Retry Success Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "query": "SELECT (COUNT(CASE WHEN retry_count > 0 AND error = false THEN 1 END) * 100.0 / COUNT(CASE WHEN retry_count > 0 THEN 1 END)) as retry_success FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND timestamp > NOW() - INTERVAL '24 hours'",
+            "legendFormat": "Retry Success"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {
+              "steps": [
+                {
+                  "value": 0,
+                  "color": "red"
+                },
+                {
+                  "value": 50,
+                  "color": "yellow"
+                },
+                {
+                  "value": 80,
+                  "color": "green"
+                }
+              ]
+            }
+          }
+        },
+        "gridPos": {
+          "x": 6,
+          "y": 46,
+          "w": 6,
+          "h": 4
+        }
+      },
+      {
+        "id": 18,
+        "title": "QA Confidence Score",
+        "type": "gauge",
+        "targets": [
+          {
+            "query": "SELECT AVG(CAST(qa_results->>'confidence' AS FLOAT)) * 100 as avg_confidence FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND timestamp > NOW() - INTERVAL '24 hours' AND qa_results IS NOT NULL",
+            "legendFormat": "Avg QA Confidence"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "thresholds": {
+              "steps": [
+                {
+                  "value": 0,
+                  "color": "red"
+                },
+                {
+                  "value": 80,
+                  "color": "yellow"
+                },
+                {
+                  "value": 90,
+                  "color": "green"
+                }
+              ]
+            }
+          }
+        },
+        "gridPos": {
+          "x": 12,
+          "y": 46,
+          "w": 6,
+          "h": 4
+        }
+      },
+      {
+        "id": 19,
+        "title": "Generated Workflow Node Count (Avg)",
+        "type": "stat",
+        "targets": [
+          {
+            "query": "SELECT AVG(CAST(metrics->>'nodeCount' AS INT)) as avg_nodes FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND timestamp > NOW() - INTERVAL '24 hours' AND metrics IS NOT NULL",
+            "legendFormat": "Avg Nodes"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 1
+          }
+        },
+        "gridPos": {
+          "x": 18,
+          "y": 46,
+          "w": 6,
+          "h": 4
+        }
+      },
+      {
+        "id": 20,
+        "title": "Usage Statistics",
+        "type": "row",
+        "collapsed": false
+      },
+      {
+        "id": 21,
+        "title": "Executions by Source",
+        "type": "piechart",
+        "targets": [
+          {
+            "query": "SELECT source, COUNT(*) as count FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND timestamp > NOW() - INTERVAL '24 hours' GROUP BY source",
+            "legendFormat": "{{source}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "displayLabels": ["name", "value", "percent"]
+            }
+          }
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 50,
+          "w": 8,
+          "h": 8
+        }
+      },
+      {
+        "id": 22,
+        "title": "Top Users (by Execution Count)",
+        "type": "table",
+        "targets": [
+          {
+            "query": "SELECT client_email, COUNT(*) as execution_count, AVG(duration_seconds) as avg_duration, COUNT(CASE WHEN error = false THEN 1 END) * 100.0 / COUNT(*) as success_rate FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND timestamp > NOW() - INTERVAL '7 days' GROUP BY client_email ORDER BY execution_count DESC LIMIT 10",
+            "legendFormat": "Top Users"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "auto"
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "avg_duration"
+              },
+              "properties": [
+                {
+                  "id": "unit",
+                  "value": "s"
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "success_rate"
+              },
+              "properties": [
+                {
+                  "id": "unit",
+                  "value": "percent"
+                }
+              ]
+            }
+          ]
+        },
+        "gridPos": {
+          "x": 8,
+          "y": 50,
+          "w": 16,
+          "h": 8
+        }
+      },
+      {
+        "id": 23,
+        "title": "Peak Usage Hours",
+        "type": "heatmap",
+        "targets": [
+          {
+            "query": "SELECT DATE_TRUNC('hour', timestamp) as hour, COUNT(*) as count FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND timestamp > NOW() - INTERVAL '7 days' GROUP BY hour ORDER BY hour",
+            "legendFormat": "Executions"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "hideFrom": {
+                "tooltip": false,
+                "viz": false,
+                "legend": false
+              }
+            }
+          }
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 58,
+          "w": 24,
+          "h": 8
+        }
+      },
+      {
+        "id": 24,
+        "title": "Cost & Resources",
+        "type": "row",
+        "collapsed": false
+      },
+      {
+        "id": 25,
+        "title": "API Calls (24h)",
+        "type": "stat",
+        "targets": [
+          {
+            "query": "SELECT COUNT(*) * 4 as total_api_calls FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND timestamp > NOW() - INTERVAL '24 hours'",
+            "legendFormat": "Total API Calls"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "description": "4 Gemini API calls per workflow execution"
+          }
+        },
+        "gridPos": {
+          "x": 0,
+          "y": 66,
+          "w": 6,
+          "h": 4
+        }
+      },
+      {
+        "id": 26,
+        "title": "Estimated Cost (24h)",
+        "type": "stat",
+        "targets": [
+          {
+            "query": "SELECT COUNT(*) * 0.015 as estimated_cost FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND timestamp > NOW() - INTERVAL '24 hours'",
+            "legendFormat": "Estimated Cost"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "decimals": 2,
+            "description": "Based on $0.015 per workflow execution"
+          }
+        },
+        "gridPos": {
+          "x": 6,
+          "y": 66,
+          "w": 6,
+          "h": 4
+        }
+      },
+      {
+        "id": 27,
+        "title": "Email Quota Usage",
+        "type": "gauge",
+        "targets": [
+          {
+            "query": "SELECT COUNT(*) as email_count FROM email_logs WHERE workflow_id = 'workflow-builder-gemini-v2-production' AND timestamp > NOW() - INTERVAL '24 hours'",
+            "legendFormat": "Emails Sent"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "min": 0,
+            "max": 500,
+            "thresholds": {
+              "steps": [
+                {
+                  "value": 0,
+                  "color": "green"
+                },
+                {
+                  "value": 400,
+                  "color": "yellow"
+                },
+                {
+                  "value": 480,
+                  "color": "red"
+                }
+              ]
+            },
+            "description": "Gmail daily limit: 500 emails"
+          }
+        },
+        "gridPos": {
+          "x": 12,
+          "y": 66,
+          "w": 6,
+          "h": 4
+        }
+      },
+      {
+        "id": 28,
+        "title": "Storage Usage",
+        "type": "stat",
+        "targets": [
+          {
+            "query": "SELECT pg_size_pretty(pg_total_relation_size('executions')) as storage_size",
+            "legendFormat": "Execution Data"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "bytes"
+          }
+        },
+        "gridPos": {
+          "x": 18,
+          "y": 66,
+          "w": 6,
+          "h": 4
+        }
+      }
+    ],
+    "alerts": [
+      {
+        "name": "High Error Rate",
+        "condition": "error_rate > 10%",
+        "evaluation": "5m",
+        "for": "5m",
+        "annotations": {
+          "summary": "Workflow error rate exceeds 10% over last 5 minutes",
+          "description": "The workflow-builder-gemini-v2-production has an error rate of {{ $value }}% which is above the 10% threshold."
+        },
+        "severity": "critical",
+        "notifications": ["pagerduty", "slack-critical"]
+      },
+      {
+        "name": "Slow Execution Time",
+        "condition": "p95_duration > 180s",
+        "evaluation": "5m",
+        "for": "10m",
+        "annotations": {
+          "summary": "95th percentile execution time exceeds 180 seconds",
+          "description": "The workflow is running slower than expected. Current p95: {{ $value }}s"
+        },
+        "severity": "warning",
+        "notifications": ["slack-warnings"]
+      },
+      {
+        "name": "API Timeout Spike",
+        "condition": "timeout_rate > 5%",
+        "evaluation": "5m",
+        "for": "10m",
+        "annotations": {
+          "summary": "API timeout rate exceeds 5%",
+          "description": "Gemini API timeouts are occurring at {{ $value }}% of requests. Check API status."
+        },
+        "severity": "warning",
+        "notifications": ["slack-warnings"]
+      },
+      {
+        "name": "Health Check Failed",
+        "condition": "health_status != 'healthy'",
+        "evaluation": "1m",
+        "for": "3m",
+        "annotations": {
+          "summary": "Workflow health check failing",
+          "description": "The workflow health check has failed 3 consecutive times. Status: {{ $value }}"
+        },
+        "severity": "critical",
+        "notifications": ["pagerduty", "slack-critical"]
+      },
+      {
+        "name": "Gmail Quota Near Limit",
+        "condition": "email_count_24h > 450",
+        "evaluation": "10m",
+        "for": "10m",
+        "annotations": {
+          "summary": "Approaching Gmail daily sending limit",
+          "description": "{{ $value }} emails sent in last 24 hours. Daily limit is 500."
+        },
+        "severity": "warning",
+        "notifications": ["slack-warnings", "email-ops"]
+      },
+      {
+        "name": "Low QA Confidence",
+        "condition": "avg_qa_confidence < 80%",
+        "evaluation": "15m",
+        "for": "30m",
+        "annotations": {
+          "summary": "QA validation confidence below 80%",
+          "description": "Average QA confidence score is {{ $value }}%. Workflows may need manual review."
+        },
+        "severity": "info",
+        "notifications": ["slack-info"]
+      }
+    ]
+  },
+  "dataSource": {
+    "type": "postgres",
+    "name": "n8n-production-db",
+    "config": {
+      "host": "localhost",
+      "port": 5432,
+      "database": "n8n",
+      "sslmode": "require"
+    },
+    "queries": {
+      "executions": "SELECT * FROM workflow_executions WHERE workflow_id = 'workflow-builder-gemini-v2-production'",
+      "error_logs": "SELECT * FROM error_logs WHERE workflow_id = 'workflow-builder-gemini-v2-production'",
+      "health_checks": "SELECT * FROM health_checks WHERE workflow_id = 'workflow-builder-gemini-v2-production'"
+    }
+  },
+  "variables": [
+    {
+      "name": "time_range",
+      "type": "interval",
+      "options": ["5m", "15m", "1h", "6h", "24h", "7d", "30d"],
+      "default": "24h"
+    },
+    {
+      "name": "source",
+      "type": "query",
+      "query": "SELECT DISTINCT source FROM executions WHERE workflow_id = 'workflow-builder-gemini-v2-production'",
+      "default": "all",
+      "includeAll": true
+    },
+    {
+      "name": "error_severity",
+      "type": "custom",
+      "options": ["HIGH", "MEDIUM", "LOW"],
+      "default": "all",
+      "includeAll": true
+    }
+  ],
+  "annotations": [
+    {
+      "name": "Deployments",
+      "datasource": "postgres",
+      "query": "SELECT timestamp, description FROM deployment_events WHERE service = 'workflow-builder'",
+      "iconColor": "blue",
+      "lineColor": "blue"
+    },
+    {
+      "name": "Incidents",
+      "datasource": "postgres",
+      "query": "SELECT timestamp, title FROM incidents WHERE service = 'workflow-builder'",
+      "iconColor": "red",
+      "lineColor": "red"
+    }
+  ],
+  "export": {
+    "formats": ["json", "csv", "pdf"],
+    "schedule": "daily",
+    "recipients": ["ops-team@company.com", "engineering@company.com"]
+  },
+  "integrations": {
+    "slack": {
+      "webhookUrl": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
+      "channels": {
+        "critical": "#alerts-critical",
+        "warnings": "#alerts-warnings",
+        "info": "#workflow-builder"
+      }
+    },
+    "pagerduty": {
+      "integrationKey": "YOUR_INTEGRATION_KEY",
+      "escalationPolicy": "engineering-on-call"
+    },
+    "email": {
+      "smtp": {
+        "host": "smtp.gmail.com",
+        "port": 587,
+        "from": "alerts@company.com"
+      },
+      "recipients": {
+        "ops": ["ops-team@company.com"],
+        "engineering": ["engineering@company.com"]
+      }
+    }
+  },
+  "documentation": {
+    "setup": "https://docs.company.com/monitoring/workflow-builder",
+    "runbook": "https://docs.company.com/runbooks/workflow-builder",
+    "alerts": "https://docs.company.com/alerts/workflow-builder"
+  },
+  "version": "3.0",
+  "lastUpdated": "2025-11-17T00:00:00.000Z",
+  "maintainer": "DevOps Team"
+}

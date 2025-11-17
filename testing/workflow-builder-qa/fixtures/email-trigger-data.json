@@ -1,0 +1,114 @@
+{
+  "valid_email_trigger": {
+    "id": "18d1234567890abc",
+    "threadId": "18d1234567890abc",
+    "labelIds": ["INBOX", "UNREAD"],
+    "snippet": "Create a workflow that syncs HubSpot deals to Asana projects",
+    "subject": "[WORKFLOW] HubSpot to Asana Integration",
+    "from": {
+      "value": [
+        {
+          "address": "client@example.com",
+          "name": "John Doe"
+        }
+      ]
+    },
+    "text": "[BRIEF]\nI need a workflow that monitors HubSpot for new deals in 'Closed Won' stage and automatically creates corresponding projects in Asana with all deal details.\n\nRequirements:\n- Trigger on deal stage change\n- Extract deal name, amount, company\n- Create Asana project with custom fields\n- Notify team via Slack\n[END]\n\nBest regards,\nJohn Doe",
+    "date": "2025-11-17T10:30:00Z"
+  },
+  "email_with_signature": {
+    "id": "18d9876543210xyz",
+    "threadId": "18d9876543210xyz",
+    "labelIds": ["INBOX", "UNREAD"],
+    "subject": "[WORKFLOW] Customer Onboarding Automation",
+    "from": {
+      "value": [
+        {
+          "address": "sarah@startup.com",
+          "name": "Sarah Johnson"
+        }
+      ]
+    },
+    "text": "Hi,\n\nI need a workflow for customer onboarding.\n\nWhen a new customer signs up in Stripe, I want to:\n1. Create a record in Airtable\n2. Send welcome email\n3. Add to Mailchimp list\n4. Create tasks in ClickUp for account setup\n\nThanks!\n\n--\nSarah Johnson\nCEO, Startup Inc.\nsarah@startup.com\n+1-555-0123\nSent from my iPhone",
+    "snippet": "I need a workflow for customer onboarding...",
+    "date": "2025-11-17T11:00:00Z"
+  },
+  "email_short_brief": {
+    "id": "18d5555555555abc",
+    "threadId": "18d5555555555abc",
+    "labelIds": ["INBOX", "UNREAD"],
+    "subject": "[WORKFLOW] Help",
+    "from": {
+      "value": [
+        {
+          "address": "test@test.com",
+          "name": "Test User"
+        }
+      ]
+    },
+    "text": "Brief: Make a workflow",
+    "snippet": "Make a workflow",
+    "date": "2025-11-17T12:00:00Z"
+  },
+  "email_no_from_address": {
+    "id": "18d7777777777abc",
+    "threadId": "18d7777777777abc",
+    "labelIds": ["INBOX", "UNREAD"],
+    "subject": "[WORKFLOW] Complex Automation",
+    "from": "invalid-format",
+    "text": "I need a complex workflow with multiple triggers and conditions",
+    "snippet": "I need a complex workflow",
+    "date": "2025-11-17T13:00:00Z"
+  },
+  "email_with_xss_attempt": {
+    "id": "18d8888888888abc",
+    "threadId": "18d8888888888abc",
+    "labelIds": ["INBOX", "UNREAD"],
+    "subject": "[WORKFLOW] <script>alert('XSS')</script>",
+    "from": {
+      "value": [
+        {
+          "address": "hacker@malicious.com",
+          "name": "<img src=x onerror=alert('XSS')>"
+        }
+      ]
+    },
+    "text": "[BRIEF]\n<script>alert('XSS')</script>\njavascript:alert('XSS')\n<img src=x onerror=alert('XSS')>\nI need a workflow that ${process.env.GEMINI_API_KEY}\n[END]",
+    "snippet": "XSS attempt",
+    "date": "2025-11-17T14:00:00Z"
+  },
+  "email_very_long_brief": {
+    "id": "18d9999999999abc",
+    "threadId": "18d9999999999abc",
+    "labelIds": ["INBOX", "UNREAD"],
+    "subject": "[WORKFLOW] Enterprise Integration",
+    "from": {
+      "value": [
+        {
+          "address": "enterprise@bigcorp.com",
+          "name": "Enterprise Client"
+        }
+      ]
+    },
+    "text": "[BRIEF]\n" + "Create a comprehensive enterprise workflow that integrates multiple systems. ".repeat(200) + "\n[END]",
+    "snippet": "Enterprise workflow request",
+    "date": "2025-11-17T15:00:00Z"
+  },
+  "email_special_characters": {
+    "id": "18d0000000000abc",
+    "threadId": "18d0000000000abc",
+    "labelIds": ["INBOX", "UNREAD"],
+    "subject": "[WORKFLOW] Spëcïål Chårãçtérs テスト 测试",
+    "from": {
+      "value": [
+        {
+          "address": "international@global.com",
+          "name": "Intërnâtiônål Üsér"
+        }
+      ]
+    },
+    "text": "[BRIEF]\nCréer ün workflow que sincroniza データ from múltiple sources: 数据库, APIs, ãnd webhooks. Include émojis: 🚀 ✨ 💡\n[END]",
+    "snippet": "International characters",
+    "date": "2025-11-17T16:00:00Z"
+  }
+}

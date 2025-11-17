@@ -1,0 +1,485 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Error Logging Schema - n8n Workflow Builder",
+  "description": "Structured error logging schema for production-grade error tracking and monitoring",
+  "version": "1.0.0",
+
+  "definitions": {
+    "errorLog": {
+      "type": "object",
+      "required": [
+        "timestamp",
+        "executionId",
+        "workflowId",
+        "errorCode",
+        "stage",
+        "severity",
+        "message"
+      ],
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when the error occurred",
+          "example": "2025-11-17T14:30:00.000Z"
+        },
+        "executionId": {
+          "type": "string",
+          "description": "Unique n8n execution identifier",
+          "example": "abc123xyz789",
+          "pattern": "^[a-zA-Z0-9-_]+$"
+        },
+        "workflowId": {
+          "type": "string",
+          "description": "n8n workflow identifier",
+          "example": "workflow-builder-gemini-v2-qa-production"
+        },
+        "workflowName": {
+          "type": "string",
+          "description": "Human-readable workflow name",
+          "example": "n8n Workflow Builder (Gemini) - Production Grade"
+        },
+        "errorCode": {
+          "type": "string",
+          "description": "Unique error code for categorization",
+          "enum": [
+            "INVALID_BRIEF_LENGTH",
+            "INVALID_EMAIL",
+            "INVALID_EMAIL_FORMAT",
+            "MISSING_BRIEF",
+            "UNKNOWN_SOURCE",
+            "NORMALIZATION_ERROR",
+            "BRIEF_PARSER_ERROR",
+            "ARCHITECT_API_ERROR",
+            "ARCHITECT_PARSE_ERROR",
+            "CONTEXT_PREP_ERROR",
+            "SYNTHESIS_API_ERROR",
+            "SYNTHESIS_PARSE_ERROR",
+            "FORMAT_OUTPUT_ERROR",
+            "KB_LOAD_ERROR",
+            "QA_VALIDATOR_ERROR",
+            "QA_FORMAT_ERROR",
+            "EMAIL_SEND_ERROR",
+            "ERROR_HANDLER_FAILURE",
+            "UNKNOWN_ERROR"
+          ],
+          "example": "ARCHITECT_API_ERROR"
+        },
+        "stage": {
+          "type": "string",
+          "description": "Workflow stage where error occurred",
+          "enum": [
+            "data-normalizer",
+            "validate-input",
+            "brief-parser",
+            "architect",
+            "architect-parse",
+            "prepare-context",
+            "synthesis",
+            "synthesis-parse",
+            "format-output",
+            "kb-load",
+            "qa-validator",
+            "qa-format",
+            "email-send",
+            "error-handler",
+            "unknown"
+          ],
+          "example": "architect"
+        },
+        "severity": {
+          "type": "string",
+          "description": "Error severity level",
+          "enum": ["low", "medium", "high", "critical"],
+          "example": "high"
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable error message",
+          "example": "Architect API failed: Rate limit exceeded",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "clientEmail": {
+          "type": "string",
+          "format": "email",
+          "description": "User's email address",
+          "example": "user@example.com"
+        },
+        "clientBrief": {
+          "type": "string",
+          "description": "Original client workflow brief (truncated)",
+          "maxLength": 500
+        },
+        "source": {
+          "type": "string",
+          "description": "Input source type",
+          "enum": ["email", "form", "unknown", "error"],
+          "example": "form"
+        },
+        "stackTrace": {
+          "type": ["string", "null"],
+          "description": "JavaScript stack trace if available",
+          "example": "Error: API failed\n    at processRequest (workflow.js:123:45)"
+        },
+        "adminNotified": {
+          "type": "boolean",
+          "description": "Whether admin notification was sent",
+          "default": false
+        },
+        "environment": {
+          "type": "string",
+          "description": "Environment where error occurred",
+          "enum": ["development", "staging", "production"],
+          "default": "production"
+        },
+        "version": {
+          "type": "integer",
+          "description": "Workflow version number",
+          "minimum": 1,
+          "example": 3
+        },
+        "retryAttempt": {
+          "type": "integer",
+          "description": "Retry attempt number (if applicable)",
+          "minimum": 0,
+          "maximum": 10,
+          "default": 0
+        },
+        "apiDetails": {
+          "type": "object",
+          "description": "Additional API-specific error details",
+          "properties": {
+            "apiName": {
+              "type": "string",
+              "description": "Name of the API that failed",
+              "example": "Gemini API"
+            },
+            "endpoint": {
+              "type": "string",
+              "description": "API endpoint URL (sanitized)",
+              "example": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
+            },
+            "statusCode": {
+              "type": "integer",
+              "description": "HTTP status code",
+              "minimum": 100,
+              "maximum": 599,
+              "example": 429
+            },
+            "responseTime": {
+              "type": "number",
+              "description": "API response time in milliseconds",
+              "minimum": 0,
+              "example": 5432
+            },
+            "rateLimitRemaining": {
+              "type": "integer",
+              "description": "Remaining API rate limit quota",
+              "minimum": 0
+            }
+          }
+        },
+        "userAgent": {
+          "type": "string",
+          "description": "User agent string (if from web form)"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional custom metadata",
+          "additionalProperties": true
+        }
+      }
+    }
+  },
+
+  "examples": [
+    {
+      "description": "Example: API Error",
+      "data": {
+        "timestamp": "2025-11-17T14:30:00.000Z",
+        "executionId": "abc123xyz789",
+        "workflowId": "workflow-builder-gemini-v2-qa-production",
+        "workflowName": "n8n Workflow Builder (Gemini) - Production Grade",
+        "errorCode": "ARCHITECT_API_ERROR",
+        "stage": "architect",
+        "severity": "high",
+        "message": "Architect API failed: Rate limit exceeded",
+        "clientEmail": "user@example.com",
+        "clientBrief": "Create a workflow that sends Slack notifications when new customers sign up",
+        "source": "form",
+        "stackTrace": null,
+        "adminNotified": true,
+        "environment": "production",
+        "version": 3,
+        "retryAttempt": 3,
+        "apiDetails": {
+          "apiName": "Gemini API",
+          "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent",
+          "statusCode": 429,
+          "responseTime": 1234,
+          "rateLimitRemaining": 0
+        }
+      }
+    },
+    {
+      "description": "Example: Validation Error",
+      "data": {
+        "timestamp": "2025-11-17T14:35:00.000Z",
+        "executionId": "def456uvw123",
+        "workflowId": "workflow-builder-gemini-v2-qa-production",
+        "workflowName": "n8n Workflow Builder (Gemini) - Production Grade",
+        "errorCode": "INVALID_EMAIL",
+        "stage": "validate-input",
+        "severity": "low",
+        "message": "Valid email address required",
+        "clientEmail": "invalid-email",
+        "clientBrief": "Test workflow",
+        "source": "form",
+        "stackTrace": null,
+        "adminNotified": false,
+        "environment": "production",
+        "version": 3,
+        "retryAttempt": 0
+      }
+    },
+    {
+      "description": "Example: Critical System Error",
+      "data": {
+        "timestamp": "2025-11-17T14:40:00.000Z",
+        "executionId": "ghi789rst456",
+        "workflowId": "workflow-builder-gemini-v2-qa-production",
+        "workflowName": "n8n Workflow Builder (Gemini) - Production Grade",
+        "errorCode": "ERROR_HANDLER_FAILURE",
+        "stage": "error-handler",
+        "severity": "critical",
+        "message": "Error handler itself failed - manual intervention required",
+        "clientEmail": "admin@example.com",
+        "source": "error-handler-failure",
+        "stackTrace": "Error: Cannot read property 'json' of undefined\n    at errorHandler (workflow.js:456:78)",
+        "adminNotified": true,
+        "environment": "production",
+        "version": 3,
+        "retryAttempt": 0,
+        "metadata": {
+          "urgency": "immediate",
+          "oncall": true
+        }
+      }
+    }
+  ],
+
+  "integrationGuide": {
+    "description": "How to integrate this schema with logging services",
+    "services": {
+      "datadog": {
+        "endpoint": "https://http-intake.logs.datadoghq.com/api/v2/logs",
+        "method": "POST",
+        "headers": {
+          "DD-API-KEY": "YOUR_API_KEY",
+          "Content-Type": "application/json"
+        },
+        "bodyFormat": "Map errorLog to Datadog's log format",
+        "example": {
+          "ddsource": "n8n-workflow-builder",
+          "service": "workflow-builder",
+          "hostname": "n8n-production",
+          "message": "{{ message }}",
+          "level": "{{ severity }}",
+          "error": {
+            "kind": "{{ errorCode }}",
+            "message": "{{ message }}",
+            "stack": "{{ stackTrace }}"
+          },
+          "custom": {
+            "executionId": "{{ executionId }}",
+            "workflowId": "{{ workflowId }}",
+            "stage": "{{ stage }}"
+          }
+        }
+      },
+      "sentry": {
+        "endpoint": "https://sentry.io/api/{project_id}/store/",
+        "method": "POST",
+        "headers": {
+          "X-Sentry-Auth": "Sentry sentry_key=YOUR_KEY",
+          "Content-Type": "application/json"
+        },
+        "bodyFormat": "Map errorLog to Sentry's event format",
+        "example": {
+          "message": "{{ message }}",
+          "level": "{{ severity }}",
+          "platform": "node",
+          "exception": {
+            "values": [{
+              "type": "{{ errorCode }}",
+              "value": "{{ message }}",
+              "stacktrace": {
+                "frames": "{{ parse stackTrace }}"
+              }
+            }]
+          },
+          "tags": {
+            "workflow_id": "{{ workflowId }}",
+            "stage": "{{ stage }}",
+            "environment": "{{ environment }}"
+          },
+          "user": {
+            "email": "{{ clientEmail }}"
+          },
+          "extra": {
+            "executionId": "{{ executionId }}",
+            "source": "{{ source }}"
+          }
+        }
+      },
+      "elasticsearch": {
+        "endpoint": "https://your-elasticsearch-cluster:9200/workflow-errors/_doc",
+        "method": "POST",
+        "headers": {
+          "Authorization": "ApiKey YOUR_API_KEY",
+          "Content-Type": "application/json"
+        },
+        "bodyFormat": "Direct mapping - schema is Elasticsearch-compatible",
+        "indexMapping": {
+          "mappings": {
+            "properties": {
+              "timestamp": { "type": "date" },
+              "executionId": { "type": "keyword" },
+              "workflowId": { "type": "keyword" },
+              "errorCode": { "type": "keyword" },
+              "stage": { "type": "keyword" },
+              "severity": { "type": "keyword" },
+              "message": { "type": "text" },
+              "clientEmail": { "type": "keyword" },
+              "source": { "type": "keyword" },
+              "stackTrace": { "type": "text" }
+            }
+          }
+        }
+      },
+      "cloudwatch": {
+        "service": "AWS CloudWatch Logs",
+        "endpoint": "Use AWS SDK",
+        "logGroupName": "/n8n/workflow-builder/errors",
+        "logStreamName": "{{ environment }}/{{ date }}",
+        "example": {
+          "timestamp": "{{ timestamp in milliseconds }}",
+          "message": "{{ JSON.stringify(errorLog) }}"
+        }
+      },
+      "splunk": {
+        "endpoint": "https://your-splunk-instance:8088/services/collector/event",
+        "method": "POST",
+        "headers": {
+          "Authorization": "Splunk YOUR_HEC_TOKEN",
+          "Content-Type": "application/json"
+        },
+        "example": {
+          "time": "{{ timestamp in epoch }}",
+          "source": "n8n-workflow-builder",
+          "sourcetype": "_json",
+          "event": "{{ errorLog }}"
+        }
+      }
+    }
+  },
+
+  "queryExamples": {
+    "description": "Common queries for error analysis",
+    "elasticsearch": {
+      "criticalErrorsLast24h": {
+        "query": {
+          "bool": {
+            "must": [
+              { "term": { "severity": "critical" } },
+              { "range": { "timestamp": { "gte": "now-24h" } } }
+            ]
+          }
+        }
+      },
+      "errorsByStage": {
+        "aggs": {
+          "stages": {
+            "terms": {
+              "field": "stage",
+              "size": 20
+            }
+          }
+        }
+      },
+      "errorRateByHour": {
+        "aggs": {
+          "errors_over_time": {
+            "date_histogram": {
+              "field": "timestamp",
+              "calendar_interval": "hour"
+            }
+          }
+        }
+      },
+      "userWithMostErrors": {
+        "aggs": {
+          "top_users": {
+            "terms": {
+              "field": "clientEmail",
+              "size": 10,
+              "order": { "_count": "desc" }
+            }
+          }
+        }
+      }
+    },
+    "sql": {
+      "criticalErrorsLast24h": "SELECT * FROM error_logs WHERE severity = 'critical' AND timestamp > NOW() - INTERVAL '24 hours' ORDER BY timestamp DESC",
+      "errorsByStage": "SELECT stage, COUNT(*) as count FROM error_logs GROUP BY stage ORDER BY count DESC",
+      "errorRateByHour": "SELECT DATE_TRUNC('hour', timestamp) as hour, COUNT(*) as errors FROM error_logs GROUP BY hour ORDER BY hour DESC",
+      "repeatErrorsForUser": "SELECT errorCode, COUNT(*) as occurrences FROM error_logs WHERE clientEmail = 'user@example.com' GROUP BY errorCode ORDER BY occurrences DESC"
+    }
+  },
+
+  "alertingRules": {
+    "description": "Recommended alerting thresholds",
+    "rules": [
+      {
+        "name": "Critical Error",
+        "condition": "severity = 'critical'",
+        "action": "Immediate admin notification + PagerDuty alert",
+        "priority": "P0"
+      },
+      {
+        "name": "High Error Rate",
+        "condition": "COUNT(errors) > 10 in last 5 minutes",
+        "action": "Send alert to #engineering-alerts Slack channel",
+        "priority": "P1"
+      },
+      {
+        "name": "API Failure Pattern",
+        "condition": "COUNT(ARCHITECT_API_ERROR) > 5 in last 10 minutes",
+        "action": "Investigate API connectivity and rate limits",
+        "priority": "P1"
+      },
+      {
+        "name": "Email Send Failures",
+        "condition": "COUNT(EMAIL_SEND_ERROR) > 3 in last hour",
+        "action": "Check email service status and credentials",
+        "priority": "P2"
+      },
+      {
+        "name": "User Retry Loop",
+        "condition": "Same user with 3+ errors in last 5 minutes",
+        "action": "Proactive outreach to user with support",
+        "priority": "P2"
+      }
+    ]
+  },
+
+  "retentionPolicy": {
+    "description": "Recommended log retention periods",
+    "low": "30 days",
+    "medium": "90 days",
+    "high": "180 days",
+    "critical": "365 days (1 year)",
+    "aggregated": "Indefinite (for metrics/analytics)"
+  }
+}

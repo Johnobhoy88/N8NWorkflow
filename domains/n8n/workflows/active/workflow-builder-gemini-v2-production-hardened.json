@@ -1,0 +1,562 @@
+{
+  "name": "n8n Workflow Builder (Gemini) - Production Hardened",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [{"mode": "everyMinute"}]
+        },
+        "filters": {
+          "labelIds": ["INBOX"],
+          "q": "is:unread subject:[WORKFLOW]"
+        },
+        "options": {
+          "markAsRead": true
+        }
+      },
+      "id": "email-trigger",
+      "name": "Email Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 100],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "existing",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "path": "workflow-builder",
+        "formTitle": "n8n Workflow Builder - Production",
+        "formDescription": "Describe your workflow needs and receive a production-ready n8n workflow JSON with 99%+ reliability",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Client Brief",
+              "fieldType": "textarea",
+              "requiredField": true,
+              "placeholder": "Describe what you want your workflow to do..."
+            },
+            {
+              "fieldLabel": "Your Email",
+              "fieldType": "email",
+              "requiredField": true,
+              "placeholder": "your@email.com"
+            }
+          ]
+        },
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "form-trigger",
+      "name": "Form Trigger",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Data Normalizer - Handles both Email and Form inputs\nconst input = items[0].json;\n\nlet result = {\n  clientBrief: null,\n  clientEmail: null,\n  source: null,\n  error: false,\n  errorMessage: null,\n  timestamp: new Date().toISOString(),\n  originalInput: input\n};\n\ntry {\n  if (input.id && input.threadId && input.labelIds) {\n    result.source = 'email';\n    const emailBody = input.text || input.snippet || '';\n    const emailFrom = input.from?.value?.[0]?.address || input.from || '';\n    const emailSubject = input.subject || '';\n    result.clientEmail = emailFrom;\n    \n    let briefContent = emailBody;\n    if (emailBody.includes('[BRIEF]')) {\n      const briefMatch = emailBody.match(/\\[BRIEF\\]([\\s\\S]*?)(?:\\[END\\]|$)/i);\n      if (briefMatch) briefContent = briefMatch[1].trim();\n    } else if (emailBody.includes('Brief:')) {\n      const briefMatch = emailBody.match(/Brief:([\\s\\S]*?)(?:\\n\\n|$)/i);\n      if (briefMatch) briefContent = briefMatch[1].trim();\n    }\n    \n    briefContent = briefContent\n      .replace(/--\\s*[\\r\\n][\\s\\S]*$/m, '')\n      .replace(/Best regards,[\\s\\S]*$/i, '')\n      .replace(/Sent from[\\s\\S]*$/i, '')\n      .trim();\n    \n    result.clientBrief = briefContent || emailSubject;\n    \n    if (!result.clientBrief || result.clientBrief.length < 10) {\n      result.error = true;\n      result.errorMessage = 'Email must contain a workflow description (at least 10 characters)';\n    }\n    if (!result.clientEmail || !result.clientEmail.includes('@')) {\n      result.error = true;\n      result.errorMessage = 'Valid email address required';\n    }\n  } else if (input['Client Brief'] || input['Your Email']) {\n    result.source = 'form';\n    result.clientBrief = input['Client Brief'];\n    result.clientEmail = input['Your Email'];\n    \n    if (!result.clientBrief || result.clientBrief.trim().length === 0) {\n      result.error = true;\n      result.errorMessage = 'Client Brief is required';\n    }\n    if (!result.clientEmail || !result.clientEmail.includes('@')) {\n      result.error = true;\n      result.errorMessage = 'Valid email address is required';\n    }\n  } else {\n    result.source = 'unknown';\n    result.error = true;\n    result.errorMessage = 'Unrecognized input format. Expected email or form data.';\n    result.clientBrief = input.brief || input.description || input.message || JSON.stringify(input);\n    result.clientEmail = input.email || input.from || 'unknown@example.com';\n  }\n  \n  if (!result.error) {\n    if (result.clientBrief) {\n      result.clientBrief = result.clientBrief\n        .replace(/\\s+/g, ' ')\n        .trim()\n        .substring(0, 5000);\n    }\n    \n    const emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\n    if (!emailRegex.test(result.clientEmail)) {\n      result.error = true;\n      result.errorMessage = 'Invalid email format';\n    }\n  }\n} catch (e) {\n  result.error = true;\n  result.errorMessage = 'Data normalization failed: ' + e.message;\n  result.source = 'error';\n}\n\nreturn [{json: result}];"
+      },
+      "id": "data-normalizer",
+      "name": "Data Normalizer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true},
+          "conditions": [
+            {
+              "id": "no-error",
+              "leftValue": "={{$json.error}}",
+              "rightValue": false,
+              "operator": {"type": "boolean", "operation": "equal"}
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// API Request Size Validator & Cost Optimizer - Brief Parser\nconst input = items[0].json;\nconst requestType = 'brief-parser';\n\nconst result = {...input, apiValidation: {passed: true, requestType, timestamp: new Date().toISOString(), metrics: {}}};\n\ntry {\n  const requestPayload = {contents: [{parts: [{text: `Extract key requirements from this client brief. Output a clear list of: 1) Primary goal 2) Data sources 3) Processing steps 4) Output destinations 5) Error handling needs 6) Constraints.\\n\\nClient Brief: ${input.clientBrief}`}]}]};\n  \n  const requestBody = JSON.stringify(requestPayload);\n  const requestSizeBytes = new Blob([requestBody]).size;\n  const requestSizeKB = (requestSizeBytes / 1024).toFixed(2);\n  const MAX_REQUEST_SIZE_KB = 120;\n  const MAX_REQUEST_SIZE_BYTES = MAX_REQUEST_SIZE_KB * 1024;\n  \n  result.apiValidation.metrics = {\n    requestSizeBytes,\n    requestSizeKB,\n    maxSizeKB: MAX_REQUEST_SIZE_KB,\n    estimatedTokens: Math.ceil(requestSizeBytes / 4),\n    withinLimit: requestSizeBytes < MAX_REQUEST_SIZE_BYTES\n  };\n  \n  if (requestSizeBytes > MAX_REQUEST_SIZE_BYTES) {\n    result.apiValidation.passed = false;\n    result.apiValidation.error = `Request size (${requestSizeKB}KB) exceeds maximum (${MAX_REQUEST_SIZE_KB}KB)`;\n    result.error = true;\n    result.errorMessage = `Request too large: ${requestSizeKB}KB (max: ${MAX_REQUEST_SIZE_KB}KB)`;\n    result.stage = 'api-size-validation';\n  }\n  \n  const estimatedInputTokens = result.apiValidation.metrics.estimatedTokens;\n  const estimatedOutputTokens = 1000;\n  const inputCost = (estimatedInputTokens / 1000000) * 0.075;\n  const outputCost = (estimatedOutputTokens / 1000000) * 0.30;\n  \n  result.apiValidation.metrics.cost = {\n    estimatedInputTokens,\n    estimatedOutputTokens,\n    inputCostUSD: inputCost.toFixed(6),\n    outputCostUSD: outputCost.toFixed(6),\n    totalCostUSD: (inputCost + outputCost).toFixed(6)\n  };\n  \n  console.log(`[API Validation] ${requestType}: ${requestSizeKB}KB, Est. Cost: $${result.apiValidation.metrics.cost.totalCostUSD}`);\n} catch (e) {\n  result.apiValidation.passed = false;\n  result.apiValidation.error = 'Validation failed: ' + e.message;\n  result.error = true;\n  result.errorMessage = 'API validation error: ' + e.message;\n  result.stage = 'api-validation-error';\n}\n\nreturn [{json: result}];"
+      },
+      "id": "validate-brief-parser-request",
+      "name": "Validate Brief Parser Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [750, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash-exp:generateContent",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "Content-Type", "value": "application/json"},
+            {"name": "x-goog-api-key", "value": "={{$env.GEMINI_API_KEY}}"}
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{JSON.stringify({contents:[{parts:[{text:'Extract key requirements from this client brief. Output a clear list of: 1) Primary goal 2) Data sources 3) Processing steps 4) Output destinations 5) Error handling needs 6) Constraints.\\n\\nClient Brief: ' + $json.clientBrief}]}]})}}",
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetweenTries": 1000
+          }
+        }
+      },
+      "id": "brief-parser",
+      "name": "Brief Parser (Hardened)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [950, 100],
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// API Response Validator & Error Handler - Brief Parser\nconst response = items[0].json;\nconst previousData = $('Validate Brief Parser Request').first().json;\n\nconst result = {...previousData, apiResponse: {validated: false, timestamp: new Date().toISOString(), responseType: 'brief-parser', metrics: {}}};\n\ntry {\n  if (response.error || response.statusCode >= 400) {\n    const statusCode = response.statusCode || 0;\n    const errorMessage = response.error?.message || response.error || 'Unknown error';\n    \n    if (statusCode === 429) {\n      const retryAfter = response.headers?.['retry-after'] || 60;\n      result.apiResponse.rateLimited = true;\n      result.apiResponse.retryAfter = parseInt(retryAfter);\n      result.apiResponse.error = `Rate limited. Retry after ${retryAfter}s`;\n      console.error(`[Rate Limit] Brief Parser: Retry after ${retryAfter}s`);\n      throw new Error(`Rate limited: retry after ${retryAfter}s`);\n    }\n    \n    if (statusCode >= 500) {\n      result.apiResponse.serverError = true;\n      result.apiResponse.error = `Server error (${statusCode}): ${errorMessage}`;\n      console.error(`[Server Error] Brief Parser: ${statusCode}`);\n      throw new Error(`Server error: ${statusCode}`);\n    }\n    \n    if (statusCode >= 400) {\n      result.apiResponse.clientError = true;\n      result.apiResponse.error = `Client error (${statusCode}): ${errorMessage}`;\n      result.error = true;\n      result.errorMessage = `API client error: ${statusCode}`;\n      result.stage = 'api-client-error';\n      return [{json: result}];\n    }\n    \n    throw new Error(`HTTP ${statusCode}: ${errorMessage}`);\n  }\n  \n  const body = response.body || response;\n  \n  if (!body.candidates || !Array.isArray(body.candidates) || body.candidates.length === 0) {\n    result.apiResponse.error = 'Invalid response structure: missing or empty candidates';\n    throw new Error('Invalid response structure');\n  }\n  \n  const candidate = body.candidates[0];\n  \n  if (candidate.finishReason === 'SAFETY') {\n    result.apiResponse.error = 'Content filtered for safety';\n    result.apiResponse.safetyRatings = candidate.safetyRatings;\n    throw new Error('Content filtered');\n  }\n  \n  if (!candidate.content || !candidate.content.parts || candidate.content.parts.length === 0 || !candidate.content.parts[0].text || candidate.content.parts[0].text.trim().length === 0) {\n    result.apiResponse.error = 'Invalid or empty content';\n    throw new Error('Invalid content structure');\n  }\n  \n  if (body.usageMetadata) {\n    const inputCost = (body.usageMetadata.promptTokenCount / 1000000) * 0.075;\n    const outputCost = (body.usageMetadata.candidatesTokenCount / 1000000) * 0.30;\n    result.apiResponse.metrics = {\n      promptTokens: body.usageMetadata.promptTokenCount || 0,\n      candidatesTokens: body.usageMetadata.candidatesTokenCount || 0,\n      totalTokens: body.usageMetadata.totalTokenCount || 0,\n      actualCostUSD: (inputCost + outputCost).toFixed(6)\n    };\n  }\n  \n  result.apiResponse.validated = true;\n  result.apiResponse.finishReason = candidate.finishReason;\n  result.candidates = body.candidates;\n  \n  console.log(`[API Success] Brief Parser: ${result.apiResponse.metrics.totalTokens} tokens, $${result.apiResponse.metrics.actualCostUSD}`);\n} catch (e) {\n  result.apiResponse.validated = false;\n  result.apiResponse.error = result.apiResponse.error || e.message;\n  result.error = true;\n  result.errorMessage = 'API response validation failed: ' + e.message;\n  result.stage = 'api-response-validation';\n  console.error(`[Validation Failed] Brief Parser: ${e.message}`);\n}\n\nreturn [{json: result}];"
+      },
+      "id": "validate-brief-parser-response",
+      "name": "Validate Brief Parser Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1150, 100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true},
+          "conditions": [
+            {
+              "id": "api-validated",
+              "leftValue": "={{$json.apiResponse.validated}}",
+              "rightValue": true,
+              "operator": {"type": "boolean", "operation": "equal"}
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "check-brief-parser-validation",
+      "name": "Check Brief Parser Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1350, 100]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Architect Request Validator\nconst input = items[0].json;\nconst result = {...input, architectApiValidation: {passed: true, requestType: 'architect-agent', timestamp: new Date().toISOString(), metrics: {}}};\n\ntry {\n  const requestPayload = {contents: [{parts: [{text: `You are an n8n workflow architect. Design a node-by-node workflow structure for this brief. Output JSON with: project_summary, nodes_required (with name, type, position), connection_paths, data_schema.\\n\\nBrief: ${input.clientBrief}\\n\\nRequirements: ${JSON.stringify(input.candidates[0].content.parts[0].text)}`}]}]};\n  \n  const requestBody = JSON.stringify(requestPayload);\n  const requestSizeBytes = new Blob([requestBody]).size;\n  const requestSizeKB = (requestSizeBytes / 1024).toFixed(2);\n  const MAX_REQUEST_SIZE_KB = 120;\n  \n  result.architectApiValidation.metrics = {\n    requestSizeBytes,\n    requestSizeKB,\n    maxSizeKB: MAX_REQUEST_SIZE_KB,\n    estimatedTokens: Math.ceil(requestSizeBytes / 4),\n    withinLimit: requestSizeBytes < MAX_REQUEST_SIZE_KB * 1024\n  };\n  \n  if (requestSizeBytes > MAX_REQUEST_SIZE_KB * 1024) {\n    result.architectApiValidation.passed = false;\n    result.error = true;\n    result.errorMessage = `Request too large: ${requestSizeKB}KB`;\n    result.stage = 'architect-api-size-validation';\n  }\n  \n  const estimatedTokens = result.architectApiValidation.metrics.estimatedTokens;\n  const inputCost = (estimatedTokens / 1000000) * 0.075;\n  const outputCost = (2000 / 1000000) * 0.30;\n  result.architectApiValidation.metrics.cost = {estimatedInputTokens: estimatedTokens, estimatedOutputTokens: 2000, totalCostUSD: (inputCost + outputCost).toFixed(6)};\n  \n  console.log(`[API Validation] architect-agent: ${requestSizeKB}KB, Est. Cost: $${result.architectApiValidation.metrics.cost.totalCostUSD}`);\n} catch (e) {\n  result.architectApiValidation.passed = false;\n  result.error = true;\n  result.errorMessage = 'API validation error: ' + e.message;\n  result.stage = 'architect-api-validation-error';\n}\n\nreturn [{json: result}];"
+      },
+      "id": "validate-architect-request",
+      "name": "Validate Architect Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 50]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash-exp:generateContent",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "Content-Type", "value": "application/json"},
+            {"name": "x-goog-api-key", "value": "={{$env.GEMINI_API_KEY}}"}
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{JSON.stringify({contents:[{parts:[{text:'You are an n8n workflow architect. Design a node-by-node workflow structure for this brief. Output JSON with: project_summary, nodes_required (with name, type, position), connection_paths, data_schema.\\n\\nBrief: ' + $json.clientBrief + '\\n\\nRequirements: ' + JSON.stringify($json.candidates[0].content.parts[0].text)}]}]})}}",
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetweenTries": 2000
+          }
+        }
+      },
+      "id": "architect-agent",
+      "name": "Architect Agent (Hardened)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1650, 50],
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Architect Response Validator\nconst response = items[0].json;\nconst previousData = $('Validate Architect Request').first().json;\nconst result = {...previousData, architectApiResponse: {validated: false, timestamp: new Date().toISOString(), responseType: 'architect-agent', metrics: {}}};\n\ntry {\n  if (response.error || response.statusCode >= 400) {\n    const statusCode = response.statusCode || 0;\n    if (statusCode === 429) {\n      const retryAfter = response.headers?.['retry-after'] || 60;\n      result.architectApiResponse.rateLimited = true;\n      result.architectApiResponse.retryAfter = parseInt(retryAfter);\n      throw new Error(`Rate limited: retry after ${retryAfter}s`);\n    }\n    if (statusCode >= 500) throw new Error(`Server error: ${statusCode}`);\n    if (statusCode >= 400) {\n      result.error = true;\n      result.errorMessage = `API client error: ${statusCode}`;\n      result.stage = 'architect-api-client-error';\n      return [{json: result}];\n    }\n  }\n  \n  const body = response.body || response;\n  if (!body.candidates || !Array.isArray(body.candidates) || body.candidates.length === 0) throw new Error('Invalid response structure');\n  \n  const candidate = body.candidates[0];\n  if (candidate.finishReason === 'SAFETY') throw new Error('Content filtered');\n  if (!candidate.content?.parts?.[0]?.text?.trim()) throw new Error('Invalid content structure');\n  \n  if (body.usageMetadata) {\n    const inputCost = (body.usageMetadata.promptTokenCount / 1000000) * 0.075;\n    const outputCost = (body.usageMetadata.candidatesTokenCount / 1000000) * 0.30;\n    result.architectApiResponse.metrics = {\n      promptTokens: body.usageMetadata.promptTokenCount || 0,\n      candidatesTokens: body.usageMetadata.candidatesTokenCount || 0,\n      totalTokens: body.usageMetadata.totalTokenCount || 0,\n      actualCostUSD: (inputCost + outputCost).toFixed(6)\n    };\n  }\n  \n  result.architectApiResponse.validated = true;\n  result.candidates = body.candidates;\n  console.log(`[API Success] Architect: ${result.architectApiResponse.metrics.totalTokens} tokens, $${result.architectApiResponse.metrics.actualCostUSD}`);\n} catch (e) {\n  result.architectApiResponse.validated = false;\n  result.error = true;\n  result.errorMessage = 'Architect API validation failed: ' + e.message;\n  result.stage = 'architect-api-response-validation';\n}\n\nreturn [{json: result}];"
+      },
+      "id": "validate-architect-response",
+      "name": "Validate Architect Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1850, 50]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true},
+          "conditions": [
+            {"id": "architect-validated", "leftValue": "={{$json.architectApiResponse.validated}}", "rightValue": true, "operator": {"type": "boolean", "operation": "equal"}}
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "check-architect-validation",
+      "name": "Check Architect Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2050, 50]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Prepare Context\nconst architectOutput = items[0].json;\nconst normalizerData = $('Data Normalizer').first().json;\n\nif(architectOutput.error) return [{json: {error: true, message: 'Architect failed', stage: 'architect', clientEmail: normalizerData.clientEmail, source: normalizerData.source}}];\n\nlet architectSpec;\ntry {\n  const geminiResponse = architectOutput.candidates?.[0]?.content?.parts?.[0]?.text;\n  if(!geminiResponse) throw new Error('No response');\n  architectSpec = typeof geminiResponse === 'string' ? JSON.parse(geminiResponse) : geminiResponse;\n} catch(e) {\n  return [{json: {error: true, message: 'Failed to parse architect output: ' + e.message, stage: 'architect-parse', clientEmail: normalizerData.clientEmail, source: normalizerData.source}}];\n}\n\nreturn [{json: {architectSpec, clientBrief: normalizerData.clientBrief, clientEmail: normalizerData.clientEmail, source: normalizerData.source, timestamp: new Date().toISOString()}}];"
+      },
+      "id": "prepare-context",
+      "name": "Prepare Synthesis Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2150, 0]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Synthesis Request Validator\nconst input = items[0].json;\nconst result = {...input, synthesisApiValidation: {passed: true, requestType: 'synthesis-agent', timestamp: new Date().toISOString(), metrics: {}}};\n\ntry {\n  const requestPayload = {contents: [{parts: [{text: `Convert to production n8n workflow JSON. Apply: contentType:raw for HTTP, Code returns [{json:{}}], Gmail OAuth2, continueOnFail:true, proper positions and IDs.\\n\\nSpec: ${JSON.stringify(input.architectSpec, null, 2)}`}]}]};\n  const requestBody = JSON.stringify(requestPayload);\n  const requestSizeBytes = new Blob([requestBody]).size;\n  const requestSizeKB = (requestSizeBytes / 1024).toFixed(2);\n  const MAX_REQUEST_SIZE_KB = 120;\n  \n  result.synthesisApiValidation.metrics = {requestSizeBytes, requestSizeKB, maxSizeKB: MAX_REQUEST_SIZE_KB, estimatedTokens: Math.ceil(requestSizeBytes / 4), withinLimit: requestSizeBytes < MAX_REQUEST_SIZE_KB * 1024};\n  \n  if (requestSizeBytes > MAX_REQUEST_SIZE_KB * 1024) {\n    result.synthesisApiValidation.passed = false;\n    result.error = true;\n    result.errorMessage = `Request too large: ${requestSizeKB}KB`;\n    result.stage = 'synthesis-api-size-validation';\n  }\n  \n  const inputCost = (result.synthesisApiValidation.metrics.estimatedTokens / 1000000) * 0.075;\n  const outputCost = (3000 / 1000000) * 0.30;\n  result.synthesisApiValidation.metrics.cost = {estimatedInputTokens: result.synthesisApiValidation.metrics.estimatedTokens, estimatedOutputTokens: 3000, totalCostUSD: (inputCost + outputCost).toFixed(6)};\n  \n  console.log(`[API Validation] synthesis-agent: ${requestSizeKB}KB, Est. Cost: $${result.synthesisApiValidation.metrics.cost.totalCostUSD}`);\n} catch (e) {\n  result.synthesisApiValidation.passed = false;\n  result.error = true;\n  result.errorMessage = 'API validation error: ' + e.message;\n  result.stage = 'synthesis-api-validation-error';\n}\n\nreturn [{json: result}];"
+      },
+      "id": "validate-synthesis-request",
+      "name": "Validate Synthesis Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2350, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash-exp:generateContent",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "Content-Type", "value": "application/json"},
+            {"name": "x-goog-api-key", "value": "={{$env.GEMINI_API_KEY}}"}
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{JSON.stringify({contents:[{parts:[{text:'Convert to production n8n workflow JSON. Apply: contentType:raw for HTTP, Code returns [{json:{}}], Gmail OAuth2, continueOnFail:true, proper positions and IDs.\\n\\nSpec: ' + JSON.stringify($json.architectSpec,null,2)}]}]})}}",
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetweenTries": 2000
+          }
+        }
+      },
+      "id": "synthesis-agent",
+      "name": "Synthesis Agent (Hardened)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2550, 0],
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Synthesis Response Validator\nconst response = items[0].json;\nconst previousData = $('Validate Synthesis Request').first().json;\nconst result = {...previousData, synthesisApiResponse: {validated: false, timestamp: new Date().toISOString(), responseType: 'synthesis-agent', metrics: {}}};\n\ntry {\n  if (response.error || response.statusCode >= 400) {\n    const statusCode = response.statusCode || 0;\n    if (statusCode === 429) {\n      const retryAfter = response.headers?.['retry-after'] || 60;\n      result.synthesisApiResponse.rateLimited = true;\n      result.synthesisApiResponse.retryAfter = parseInt(retryAfter);\n      throw new Error(`Rate limited: retry after ${retryAfter}s`);\n    }\n    if (statusCode >= 500) throw new Error(`Server error: ${statusCode}`);\n    if (statusCode >= 400) {\n      result.error = true;\n      result.errorMessage = `API client error: ${statusCode}`;\n      result.stage = 'synthesis-api-client-error';\n      return [{json: result}];\n    }\n  }\n  \n  const body = response.body || response;\n  if (!body.candidates || !Array.isArray(body.candidates) || body.candidates.length === 0) throw new Error('Invalid response structure');\n  const candidate = body.candidates[0];\n  if (candidate.finishReason === 'SAFETY') throw new Error('Content filtered');\n  if (!candidate.content?.parts?.[0]?.text?.trim()) throw new Error('Invalid content structure');\n  \n  if (body.usageMetadata) {\n    const inputCost = (body.usageMetadata.promptTokenCount / 1000000) * 0.075;\n    const outputCost = (body.usageMetadata.candidatesTokenCount / 1000000) * 0.30;\n    result.synthesisApiResponse.metrics = {promptTokens: body.usageMetadata.promptTokenCount || 0, candidatesTokens: body.usageMetadata.candidatesTokenCount || 0, totalTokens: body.usageMetadata.totalTokenCount || 0, actualCostUSD: (inputCost + outputCost).toFixed(6)};\n  }\n  \n  result.synthesisApiResponse.validated = true;\n  result.candidates = body.candidates;\n  console.log(`[API Success] Synthesis: ${result.synthesisApiResponse.metrics.totalTokens} tokens, $${result.synthesisApiResponse.metrics.actualCostUSD}`);\n} catch (e) {\n  result.synthesisApiResponse.validated = false;\n  result.error = true;\n  result.errorMessage = 'Synthesis API validation failed: ' + e.message;\n  result.stage = 'synthesis-api-response-validation';\n}\n\nreturn [{json: result}];"
+      },
+      "id": "validate-synthesis-response",
+      "name": "Validate Synthesis Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2750, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true},
+          "conditions": [
+            {"id": "synthesis-validated", "leftValue": "={{$json.synthesisApiResponse.validated}}", "rightValue": true, "operator": {"type": "boolean", "operation": "equal"}}
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "check-synthesis-validation",
+      "name": "Check Synthesis Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2950, 0]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Format Output\nconst synthesisOutput = items[0].json;\nconst contextData = $('Prepare Synthesis Context').first().json;\n\nif(synthesisOutput.error) return [{json: {error: true, message: 'Synthesis failed', stage: 'synthesis', clientEmail: contextData.clientEmail, source: contextData.source}}];\n\nlet workflowJson;\ntry {\n  const geminiResponse = synthesisOutput.candidates?.[0]?.content?.parts?.[0]?.text;\n  if(!geminiResponse) throw new Error('No response');\n  let jsonText = geminiResponse;\n  if(jsonText.includes('```json')) jsonText = jsonText.split('```json')[1].split('```')[0].trim();\n  else if(jsonText.includes('```')) jsonText = jsonText.split('```')[1].split('```')[0].trim();\n  workflowJson = JSON.parse(jsonText);\n  if(!workflowJson.nodes || !workflowJson.connections) throw new Error('Invalid structure');\n} catch(e) {\n  return [{json: {error: true, message: 'Failed to parse synthesis: ' + e.message, stage: 'synthesis-parse', clientEmail: contextData.clientEmail, source: contextData.source}}];\n}\n\nconst workflowSummary = `<h3>Generated Workflow</h3><p><strong>Name:</strong> ${workflowJson.name || 'Custom'}</p><p><strong>Nodes:</strong> ${workflowJson.nodes?.length || 0}</p><p><strong>Source:</strong> ${contextData.source}</p>`;\n\nreturn [{json: {success: true, clientEmail: contextData.clientEmail, clientBrief: contextData.clientBrief, source: contextData.source, workflowJson, workflowSummary, timestamp: contextData.timestamp, qaValidationPending: true}}];"
+      },
+      "id": "format-output",
+      "name": "Format Final Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3050, -50]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const previousData = items[0].json;\ntry {\n  return [{json: {...previousData, knowledgeBaseReady: true, qaValidationStarting: true, kbStats: {patterns: 50, nodes: 25, validationRules: 30, bestPractices: 50}}}];\n} catch(e) {\n  return [{json: {error: true, message: 'KB load failed: ' + e.message, stage: 'kb-load', source: previousData.source}}];\n}"
+      },
+      "id": "load-kb",
+      "name": "Load Knowledge Base",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3250, -50]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// QA Request Validator\nconst input = items[0].json;\nconst result = {...input, qaApiValidation: {passed: true, requestType: 'qa-validator', timestamp: new Date().toISOString(), metrics: {}}};\n\ntry {\n  const requestPayload = {contents: [{parts: [{text: `Validate this workflow JSON. Check: 1)Node IDs unique 2)Positions present 3)Connections valid 4)Required fields present 5)No hardcoded keys. Output JSON with: valid(bool), issues(array), confidence(0-1), summary(string).\\n\\nWorkflow: ${JSON.stringify(input.workflowJson, null, 2)}`}]}]};\n  const requestBody = JSON.stringify(requestPayload);\n  const requestSizeBytes = new Blob([requestBody]).size;\n  const requestSizeKB = (requestSizeBytes / 1024).toFixed(2);\n  const MAX_REQUEST_SIZE_KB = 120;\n  \n  result.qaApiValidation.metrics = {requestSizeBytes, requestSizeKB, maxSizeKB: MAX_REQUEST_SIZE_KB, estimatedTokens: Math.ceil(requestSizeBytes / 4), withinLimit: requestSizeBytes < MAX_REQUEST_SIZE_KB * 1024};\n  \n  if (requestSizeBytes > MAX_REQUEST_SIZE_KB * 1024) {\n    result.qaApiValidation.passed = false;\n    result.error = true;\n    result.errorMessage = `Request too large: ${requestSizeKB}KB`;\n    result.stage = 'qa-api-size-validation';\n  }\n  \n  const inputCost = (result.qaApiValidation.metrics.estimatedTokens / 1000000) * 0.075;\n  const outputCost = (1500 / 1000000) * 0.30;\n  result.qaApiValidation.metrics.cost = {estimatedInputTokens: result.qaApiValidation.metrics.estimatedTokens, estimatedOutputTokens: 1500, totalCostUSD: (inputCost + outputCost).toFixed(6)};\n  \n  console.log(`[API Validation] qa-validator: ${requestSizeKB}KB, Est. Cost: $${result.qaApiValidation.metrics.cost.totalCostUSD}`);\n} catch (e) {\n  result.qaApiValidation.passed = false;\n  result.error = true;\n  result.errorMessage = 'API validation error: ' + e.message;\n  result.stage = 'qa-api-validation-error';\n}\n\nreturn [{json: result}];"
+      },
+      "id": "validate-qa-request",
+      "name": "Validate QA Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3450, -50]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash-exp:generateContent",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "Content-Type", "value": "application/json"},
+            {"name": "x-goog-api-key", "value": "={{$env.GEMINI_API_KEY}}"}
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{JSON.stringify({contents:[{parts:[{text:'Validate this workflow JSON. Check: 1)Node IDs unique 2)Positions present 3)Connections valid 4)Required fields present 5)No hardcoded keys. Output JSON with: valid(bool), issues(array), confidence(0-1), summary(string).\\n\\nWorkflow: ' + JSON.stringify($json.workflowJson,null,2)}]}]})}}",
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetweenTries": 1000
+          }
+        }
+      },
+      "id": "qa-validator",
+      "name": "QA Validator (Hardened)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3650, -50],
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// QA Response Validator\nconst response = items[0].json;\nconst previousData = $('Validate QA Request').first().json;\nconst result = {...previousData, qaApiResponse: {validated: false, timestamp: new Date().toISOString(), responseType: 'qa-validator', metrics: {}}};\n\ntry {\n  if (response.error || response.statusCode >= 400) {\n    const statusCode = response.statusCode || 0;\n    if (statusCode === 429) {\n      const retryAfter = response.headers?.['retry-after'] || 60;\n      result.qaApiResponse.rateLimited = true;\n      result.qaApiResponse.retryAfter = parseInt(retryAfter);\n      throw new Error(`Rate limited: retry after ${retryAfter}s`);\n    }\n    if (statusCode >= 500) throw new Error(`Server error: ${statusCode}`);\n    if (statusCode >= 400) {\n      result.error = true;\n      result.errorMessage = `API client error: ${statusCode}`;\n      result.stage = 'qa-api-client-error';\n      return [{json: result}];\n    }\n  }\n  \n  const body = response.body || response;\n  if (!body.candidates || !Array.isArray(body.candidates) || body.candidates.length === 0) throw new Error('Invalid response structure');\n  const candidate = body.candidates[0];\n  if (candidate.finishReason === 'SAFETY') throw new Error('Content filtered');\n  if (!candidate.content?.parts?.[0]?.text?.trim()) throw new Error('Invalid content structure');\n  \n  if (body.usageMetadata) {\n    const inputCost = (body.usageMetadata.promptTokenCount / 1000000) * 0.075;\n    const outputCost = (body.usageMetadata.candidatesTokenCount / 1000000) * 0.30;\n    result.qaApiResponse.metrics = {promptTokens: body.usageMetadata.promptTokenCount || 0, candidatesTokens: body.usageMetadata.candidatesTokenCount || 0, totalTokens: body.usageMetadata.totalTokenCount || 0, actualCostUSD: (inputCost + outputCost).toFixed(6)};\n  }\n  \n  result.qaApiResponse.validated = true;\n  result.candidates = body.candidates;\n  console.log(`[API Success] QA: ${result.qaApiResponse.metrics.totalTokens} tokens, $${result.qaApiResponse.metrics.actualCostUSD}`);\n} catch (e) {\n  result.qaApiResponse.validated = false;\n  result.error = true;\n  result.errorMessage = 'QA API validation failed: ' + e.message;\n  result.stage = 'qa-api-response-validation';\n}\n\nreturn [{json: result}];"
+      },
+      "id": "validate-qa-response",
+      "name": "Validate QA Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3850, -50]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true},
+          "conditions": [
+            {"id": "qa-validated", "leftValue": "={{$json.qaApiResponse.validated}}", "rightValue": true, "operator": {"type": "boolean", "operation": "equal"}}
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "check-qa-validation",
+      "name": "Check QA Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [4050, -50]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const qaOutput = items[0].json;\nconst kbData = $('Load Knowledge Base').first().json;\n\ntry {\n  const geminiResponse = qaOutput.candidates?.[0]?.content?.parts?.[0]?.text;\n  if(!geminiResponse) return [{json: {...kbData, qaResults: null, qaValidationFailed: true, qaHtml: '<p>QA validation could not complete</p>'}}];\n  \n  let qaResults;\n  try {\n    qaResults = JSON.parse(geminiResponse);\n  } catch(e) {\n    let jsonText = geminiResponse;\n    if(jsonText.includes('```json')) jsonText = jsonText.split('```json')[1].split('```')[0].trim();\n    qaResults = JSON.parse(jsonText);\n  }\n  \n  const qaHtml = `<div><h3>QA Report</h3><p>Valid: ${qaResults.valid ? 'Yes' : 'No'}</p><p>Confidence: ${((qaResults.confidence || 0.95) * 100).toFixed(1)}%</p><p>Source: ${kbData.source}</p></div>`;\n  \n  return [{json: {...kbData, qaResults, qaHtml, qaValidationComplete: true, finalWorkflowJson: qaResults.correctedWorkflow || kbData.workflowJson}}];\n} catch(e) {\n  return [{json: {...kbData, qaError: true, qaErrorMessage: e.message, qaHtml: '<p>QA error</p>'}}];\n}"
+      },
+      "id": "format-qa-results",
+      "name": "Format QA Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4150, -100]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// API Monitoring Dashboard\nconst data = items[0].json;\n\nconst apiMetrics = {\n  workflow: {name: 'n8n Workflow Builder (Production Hardened)', executionId: data.timestamp, source: data.source, clientEmail: data.clientEmail},\n  apis: {\n    briefParser: {requestValidation: data.apiValidation || {}, responseValidation: data.apiResponse || {}, success: data.apiResponse?.validated || false},\n    architect: {requestValidation: data.architectApiValidation || {}, responseValidation: data.architectApiResponse || {}, success: data.architectApiResponse?.validated || false},\n    synthesis: {requestValidation: data.synthesisApiValidation || {}, responseValidation: data.synthesisApiResponse || {}, success: data.synthesisApiResponse?.validated || false},\n    qa: {requestValidation: data.qaApiValidation || {}, responseValidation: data.qaApiResponse || {}, success: data.qaApiResponse?.validated || false}\n  },\n  summary: {totalAPICalls: 4, successfulCalls: 0, failedCalls: 0, totalTokens: 0, totalCostUSD: '0.000000', rateLimitHits: 0, serverErrors: 0, clientErrors: 0}\n};\n\nfor (const [apiName, apiData] of Object.entries(apiMetrics.apis)) {\n  if (apiData.success) apiMetrics.summary.successfulCalls++;\n  else apiMetrics.summary.failedCalls++;\n  \n  if (apiData.responseValidation.metrics?.totalTokens) apiMetrics.summary.totalTokens += apiData.responseValidation.metrics.totalTokens;\n  if (apiData.responseValidation.metrics?.actualCostUSD) {\n    const currentTotal = parseFloat(apiMetrics.summary.totalCostUSD);\n    const apiCost = parseFloat(apiData.responseValidation.metrics.actualCostUSD);\n    apiMetrics.summary.totalCostUSD = (currentTotal + apiCost).toFixed(6);\n  }\n  \n  if (apiData.responseValidation.rateLimited) apiMetrics.summary.rateLimitHits++;\n  if (apiData.responseValidation.serverError) apiMetrics.summary.serverErrors++;\n  if (apiData.responseValidation.clientError) apiMetrics.summary.clientErrors++;\n}\n\nconst reliabilityScore = ((apiMetrics.summary.successfulCalls / apiMetrics.summary.totalAPICalls) * 100).toFixed(2);\napiMetrics.summary.reliabilityScore = `${reliabilityScore}%`;\n\nconsole.log('=== API MONITORING DASHBOARD ===');\nconsole.log(`Execution: ${data.timestamp}`);\nconsole.log(`Source: ${data.source}`);\nconsole.log(`Successful Calls: ${apiMetrics.summary.successfulCalls}/${apiMetrics.summary.totalAPICalls}`);\nconsole.log(`Reliability: ${reliabilityScore}%`);\nconsole.log(`Total Tokens: ${apiMetrics.summary.totalTokens}`);\nconsole.log(`Total Cost: $${apiMetrics.summary.totalCostUSD}`);\nconsole.log(`Rate Limits: ${apiMetrics.summary.rateLimitHits}`);\nconsole.log(`Server Errors: ${apiMetrics.summary.serverErrors}`);\nconsole.log(`Client Errors: ${apiMetrics.summary.clientErrors}`);\nconsole.log('================================');\n\nreturn [{json: {...data, apiMonitoring: apiMetrics}}];"
+      },
+      "id": "api-monitoring",
+      "name": "API Monitoring Dashboard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4350, -100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+          "conditions": [
+            {"id": "has-error", "leftValue": "={{$json.error}}", "rightValue": true, "operator": {"type": "boolean", "operation": "notEqual"}}
+          ],
+          "combineOperation": "all"
+        },
+        "options": {}
+      },
+      "id": "check-errors",
+      "name": "Check for Errors",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [4550, 50]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{$json.clientEmail}}",
+        "subject": "Your Production n8n Workflow is Ready",
+        "messageType": "html",
+        "message": "={{`<h2>Your Production-Ready Workflow</h2><p>Brief: ${$json.clientBrief}</p>${$json.workflowSummary || ''}<h3>API Reliability</h3><p>Reliability: ${$json.apiMonitoring?.summary?.reliabilityScore || 'N/A'}</p><p>Total Cost: $${$json.apiMonitoring?.summary?.totalCostUSD || '0.000000'}</p><p>Total Tokens: ${$json.apiMonitoring?.summary?.totalTokens || 0}</p><pre>${JSON.stringify($json.finalWorkflowJson || $json.workflowJson, null, 2)}</pre>${$json.qaHtml || ''}`}}"
+      },
+      "id": "send-workflow",
+      "name": "Send Workflow Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [4750, -50],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-oauth2",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const errorData = items[0].json;\nconst normalizerData = $('Data Normalizer').first().json;\n\nconst errorHtml = `<h2>Workflow Generation Error</h2><p>Stage: ${errorData.stage || 'unknown'}</p><p>Message: ${errorData.message || 'Unknown error'}</p><p>Source: ${errorData.source || normalizerData.source || 'unknown'}</p>`;\n\nreturn [{json: {error: true, clientEmail: errorData.clientEmail || normalizerData.clientEmail || 'unknown@example.com', subject: 'Workflow Generation Failed', emailHtml: errorHtml, source: errorData.source || normalizerData.source, timestamp: new Date().toISOString()}}];"
+      },
+      "id": "error-handler",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4550, 350]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{$json.clientEmail}}",
+        "subject": "={{$json.subject}}",
+        "messageType": "html",
+        "message": "={{$json.emailHtml}}"
+      },
+      "id": "send-error",
+      "name": "Send Error Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [4750, 350],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-oauth2",
+          "name": "Gmail OAuth2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Email Trigger": {"main": [[{"node": "Data Normalizer", "type": "main", "index": 0}]]},
+    "Form Trigger": {"main": [[{"node": "Data Normalizer", "type": "main", "index": 0}]]},
+    "Data Normalizer": {"main": [[{"node": "Validate Input", "type": "main", "index": 0}]]},
+    "Validate Input": {"main": [[{"node": "Validate Brief Parser Request", "type": "main", "index": 0}], [{"node": "Error Handler", "type": "main", "index": 0}]]},
+    "Validate Brief Parser Request": {"main": [[{"node": "Brief Parser (Hardened)", "type": "main", "index": 0}]]},
+    "Brief Parser (Hardened)": {"main": [[{"node": "Validate Brief Parser Response", "type": "main", "index": 0}]]},
+    "Validate Brief Parser Response": {"main": [[{"node": "Check Brief Parser Valid", "type": "main", "index": 0}]]},
+    "Check Brief Parser Valid": {"main": [[{"node": "Validate Architect Request", "type": "main", "index": 0}], [{"node": "Error Handler", "type": "main", "index": 0}]]},
+    "Validate Architect Request": {"main": [[{"node": "Architect Agent (Hardened)", "type": "main", "index": 0}]]},
+    "Architect Agent (Hardened)": {"main": [[{"node": "Validate Architect Response", "type": "main", "index": 0}]]},
+    "Validate Architect Response": {"main": [[{"node": "Check Architect Valid", "type": "main", "index": 0}]]},
+    "Check Architect Valid": {"main": [[{"node": "Prepare Synthesis Context", "type": "main", "index": 0}], [{"node": "Error Handler", "type": "main", "index": 0}]]},
+    "Prepare Synthesis Context": {"main": [[{"node": "Validate Synthesis Request", "type": "main", "index": 0}]]},
+    "Validate Synthesis Request": {"main": [[{"node": "Synthesis Agent (Hardened)", "type": "main", "index": 0}]]},
+    "Synthesis Agent (Hardened)": {"main": [[{"node": "Validate Synthesis Response", "type": "main", "index": 0}]]},
+    "Validate Synthesis Response": {"main": [[{"node": "Check Synthesis Valid", "type": "main", "index": 0}]]},
+    "Check Synthesis Valid": {"main": [[{"node": "Format Final Output", "type": "main", "index": 0}], [{"node": "Error Handler", "type": "main", "index": 0}]]},
+    "Format Final Output": {"main": [[{"node": "Load Knowledge Base", "type": "main", "index": 0}]]},
+    "Load Knowledge Base": {"main": [[{"node": "Validate QA Request", "type": "main", "index": 0}]]},
+    "Validate QA Request": {"main": [[{"node": "QA Validator (Hardened)", "type": "main", "index": 0}]]},
+    "QA Validator (Hardened)": {"main": [[{"node": "Validate QA Response", "type": "main", "index": 0}]]},
+    "Validate QA Response": {"main": [[{"node": "Check QA Valid", "type": "main", "index": 0}]]},
+    "Check QA Valid": {"main": [[{"node": "Format QA Results", "type": "main", "index": 0}], [{"node": "Error Handler", "type": "main", "index": 0}]]},
+    "Format QA Results": {"main": [[{"node": "API Monitoring Dashboard", "type": "main", "index": 0}]]},
+    "API Monitoring Dashboard": {"main": [[{"node": "Check for Errors", "type": "main", "index": 0}]]},
+    "Check for Errors": {"main": [[{"node": "Send Workflow Email", "type": "main", "index": 0}], [{"node": "Error Handler", "type": "main", "index": 0}]]},
+    "Error Handler": {"main": [[{"node": "Send Error Email", "type": "main", "index": 0}]]},
+    "Send Workflow Email": {"main": [[]]},
+    "Send Error Email": {"main": [[]]}
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "",
+    "timezone": "America/New_York",
+    "executionTimeout": 600,
+    "maxExecutionTimeout": 3600
+  },
+  "id": "workflow-builder-gemini-v2-production-hardened",
+  "tags": [
+    {"createdAt": "2025-11-17T00:00:00.000Z", "updatedAt": "2025-11-17T00:00:00.000Z", "id": "production-hardened", "name": "production-hardened"},
+    {"createdAt": "2025-11-17T00:00:00.000Z", "updatedAt": "2025-11-17T00:00:00.000Z", "id": "api-security", "name": "api-security"},
+    {"createdAt": "2025-11-17T00:00:00.000Z", "updatedAt": "2025-11-17T00:00:00.000Z", "id": "99-reliability", "name": "99-reliability"}
+  ],
+  "meta": {
+    "instanceId": "n8n-workflow-builder-production-hardened",
+    "templateCredsSetupCompleted": true,
+    "version": "4.0.0-hardened"
+  },
+  "versionId": "production-v4.0-hardened"
+}

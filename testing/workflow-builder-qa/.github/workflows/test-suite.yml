@@ -1,0 +1,332 @@
+name: Workflow Builder QA Test Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of test to run'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - unit
+          - integration
+          - e2e
+          - security
+          - performance
+          - load
+
+env:
+  NODE_VERSION: '18.x'
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+  N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    if: |
+      github.event.inputs.test_type == 'unit' ||
+      github.event.inputs.test_type == 'all' ||
+      github.event.inputs.test_type == ''
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'testing/workflow-builder-qa/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: testing/workflow-builder-qa
+        run: npm ci
+
+      - name: Run unit tests
+        working-directory: testing/workflow-builder-qa
+        run: npm run test:unit
+        env:
+          SILENT_TESTS: 'true'
+
+      - name: Upload unit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: testing/workflow-builder-qa/reports/junit.xml
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    if: |
+      github.event.inputs.test_type == 'integration' ||
+      github.event.inputs.test_type == 'all' ||
+      github.event.inputs.test_type == ''
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'testing/workflow-builder-qa/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: testing/workflow-builder-qa
+        run: npm ci
+
+      - name: Run integration tests
+        working-directory: testing/workflow-builder-qa
+        run: npm run test:integration
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+      - name: Upload integration test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: testing/workflow-builder-qa/reports/
+
+      - name: Upload coverage reports
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          directory: testing/workflow-builder-qa/coverage
+          flags: integration
+
+  e2e-tests:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+    if: |
+      github.event.inputs.test_type == 'e2e' ||
+      github.event.inputs.test_type == 'all' ||
+      github.event.inputs.test_type == ''
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'testing/workflow-builder-qa/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: testing/workflow-builder-qa
+        run: npm ci
+
+      - name: Run E2E tests
+        working-directory: testing/workflow-builder-qa
+        run: npm run test:e2e
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+
+      - name: Upload E2E test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: testing/workflow-builder-qa/reports/
+
+  security-tests:
+    name: Security Tests
+    runs-on: ubuntu-latest
+    if: |
+      github.event.inputs.test_type == 'security' ||
+      github.event.inputs.test_type == 'all' ||
+      github.event.inputs.test_type == ''
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'testing/workflow-builder-qa/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: testing/workflow-builder-qa
+        run: npm ci
+
+      - name: Run security tests
+        working-directory: testing/workflow-builder-qa
+        run: npm run test:security
+
+      - name: Security audit
+        working-directory: testing/workflow-builder-qa
+        run: npm audit --audit-level=moderate
+
+      - name: Upload security test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-test-results
+          path: testing/workflow-builder-qa/reports/
+
+  performance-tests:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    if: |
+      github.event.inputs.test_type == 'performance' ||
+      github.event.inputs.test_type == 'all' ||
+      github.event.inputs.test_type == ''
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'testing/workflow-builder-qa/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: testing/workflow-builder-qa
+        run: npm ci
+
+      - name: Run performance tests
+        working-directory: testing/workflow-builder-qa
+        run: npm run test:performance
+
+      - name: Upload performance results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-test-results
+          path: testing/workflow-builder-qa/reports/
+
+  load-tests:
+    name: Load Tests
+    runs-on: ubuntu-latest
+    if: |
+      github.event.inputs.test_type == 'load' ||
+      (github.event_name == 'schedule' && github.ref == 'refs/heads/main')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Run load tests
+        working-directory: testing/workflow-builder-qa
+        run: k6 run --out json=load-test-results.json load-tests/load-test.js
+        env:
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+
+      - name: Upload load test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-results
+          path: testing/workflow-builder-qa/load-test-results.json
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const results = JSON.parse(fs.readFileSync('testing/workflow-builder-qa/load-test-results.json', 'utf8'));
+            const comment = `## Load Test Results\n\nLoad tests completed. Check artifacts for detailed results.`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+  coverage-report:
+    name: Generate Coverage Report
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests, e2e-tests]
+    if: always()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'testing/workflow-builder-qa/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: testing/workflow-builder-qa
+        run: npm ci
+
+      - name: Generate combined coverage
+        working-directory: testing/workflow-builder-qa
+        run: npm run coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          directory: testing/workflow-builder-qa/coverage
+          fail_ci_if_error: true
+          verbose: true
+
+      - name: Generate coverage badge
+        run: |
+          echo "Coverage report generated"
+
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests, e2e-tests, security-tests, performance-tests]
+    if: always()
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Generate test summary
+        run: |
+          echo "# Test Suite Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "- Unit Tests: ${{ needs.unit-tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Integration Tests: ${{ needs.integration-tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- E2E Tests: ${{ needs.e2e-tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Security Tests: ${{ needs.security-tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Performance Tests: ${{ needs.performance-tests.result }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check test results
+        run: |
+          if [ "${{ needs.unit-tests.result }}" == "failure" ] || \
+             [ "${{ needs.integration-tests.result }}" == "failure" ] || \
+             [ "${{ needs.e2e-tests.result }}" == "failure" ]; then
+            echo "One or more critical tests failed"
+            exit 1
+          fi

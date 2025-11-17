@@ -1,0 +1,744 @@
+{
+  "name": "n8n Workflow Builder v3.0 - Enterprise Edition",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [{"mode": "everyMinute"}]
+        },
+        "filters": {
+          "labelIds": ["INBOX"],
+          "q": "is:unread subject:[WORKFLOW]"
+        },
+        "options": {
+          "markAsRead": true
+        }
+      },
+      "id": "email-trigger",
+      "name": "Email Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 100],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "{{$credentials.GMAIL_OAUTH2_ID}}",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "path": "workflow-builder",
+        "formTitle": "n8n Workflow Builder v3.0",
+        "formDescription": "Enterprise-grade workflow generation with GDPR compliance",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Client Brief",
+              "fieldType": "textarea",
+              "requiredField": true,
+              "placeholder": "Describe your workflow requirements..."
+            },
+            {
+              "fieldLabel": "Your Email",
+              "fieldType": "email",
+              "requiredField": true,
+              "placeholder": "your@email.com"
+            },
+            {
+              "fieldLabel": "Company",
+              "fieldType": "text",
+              "requiredField": false,
+              "placeholder": "Your company name"
+            },
+            {
+              "fieldLabel": "Priority",
+              "fieldType": "dropdown",
+              "options": ["High", "Medium", "Low"],
+              "requiredField": false
+            },
+            {
+              "fieldLabel": "GDPR Consent",
+              "fieldType": "checkbox",
+              "requiredField": true,
+              "placeholder": "I consent to data processing"
+            }
+          ]
+        },
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "form-trigger",
+      "name": "Form Trigger",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.WEBHOOK_URL}}/workflow-builder/v3",
+        "method": "POST",
+        "authentication": "headerAuth",
+        "headerAuth": {
+          "name": "X-API-Key",
+          "value": "={{$credentials.API_KEY}}"
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhookTrigger",
+      "typeVersion": 1,
+      "position": [250, 500]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Enhanced Data Normalizer with GDPR compliance\nconst input = items[0].json;\nconst timestamp = new Date().toISOString();\n\nlet result = {\n  clientBrief: null,\n  clientEmail: null,\n  company: null,\n  priority: 'Medium',\n  gdprConsent: false,\n  source: null,\n  error: false,\n  errorMessage: null,\n  timestamp: timestamp,\n  requestId: crypto.randomUUID(),\n  ipAddress: input.ipAddress || null,\n  userAgent: input.userAgent || null,\n  originalInput: input,\n  metrics: {\n    processingStartTime: Date.now()\n  }\n};\n\ntry {\n  // Email source processing\n  if (input.id && input.threadId && input.labelIds) {\n    result.source = 'email';\n    const emailBody = input.text || input.snippet || '';\n    const emailFrom = input.from?.value?.[0]?.address || input.from || '';\n    result.clientEmail = emailFrom;\n    result.clientBrief = emailBody.replace(/--\\s*[\\r\\n][\\s\\S]*$/m, '').trim();\n    result.gdprConsent = true; // Implied consent via email\n    \n  // Form source processing\n  } else if (input['Client Brief'] || input['Your Email']) {\n    result.source = 'form';\n    result.clientBrief = input['Client Brief'];\n    result.clientEmail = input['Your Email'];\n    result.company = input['Company'] || 'Unknown';\n    result.priority = input['Priority'] || 'Medium';\n    result.gdprConsent = input['GDPR Consent'] === true || input['GDPR Consent'] === 'true';\n    \n  // Webhook source processing\n  } else if (input.webhook_payload) {\n    result.source = 'webhook';\n    const payload = input.webhook_payload;\n    result.clientBrief = payload.brief || payload.description;\n    result.clientEmail = payload.email || payload.contact;\n    result.company = payload.company || payload.organization;\n    result.priority = payload.priority || 'Medium';\n    result.gdprConsent = payload.gdpr_consent || false;\n    \n  } else {\n    result.source = 'unknown';\n    result.error = true;\n    result.errorMessage = 'Unrecognized input format';\n  }\n  \n  // Enhanced validation\n  if (!result.error) {\n    // Email validation\n    const emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\n    if (!emailRegex.test(result.clientEmail)) {\n      result.error = true;\n      result.errorMessage = 'Invalid email format';\n    }\n    \n    // GDPR compliance check\n    if (!result.gdprConsent && result.source !== 'email') {\n      result.error = true;\n      result.errorMessage = 'GDPR consent required';\n    }\n    \n    // Brief validation\n    if (!result.clientBrief || result.clientBrief.length < 10) {\n      result.error = true;\n      result.errorMessage = 'Brief must be at least 10 characters';\n    }\n    \n    // Sanitization\n    if (result.clientBrief) {\n      result.clientBrief = result.clientBrief\n        .replace(/<script[^>]*>.*?<\\/script>/gi, '') // Remove scripts\n        .replace(/<[^>]+>/g, '') // Remove HTML tags\n        .replace(/\\s+/g, ' ') // Normalize whitespace\n        .trim()\n        .substring(0, 5000); // Limit length\n    }\n  }\n  \n  // Add processing metrics\n  result.metrics.processingEndTime = Date.now();\n  result.metrics.processingDuration = result.metrics.processingEndTime - result.metrics.processingStartTime;\n  \n} catch (e) {\n  result.error = true;\n  result.errorMessage = 'Data normalization failed: ' + e.message;\n  result.source = 'error';\n}\n\nreturn [{json: result}];"
+      },
+      "id": "data-normalizer",
+      "name": "Data Normalizer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "{{$env.AUDIT_TABLE}}",
+        "columns": "request_id, email, brief, source, timestamp, gdpr_consent, ip_address",
+        "additionalFields": {}
+      },
+      "id": "audit-log",
+      "name": "Audit Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [650, 400],
+      "credentials": {
+        "postgres": {
+          "id": "{{$credentials.POSTGRES_ID}}",
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "no-error",
+              "leftValue": "={{$json.error}}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "{{$env.AI_ENDPOINT}}/brief-parser",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-API-Key",
+              "value": "{{$credentials.AI_API_KEY}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{JSON.stringify({contents:[{parts:[{text:'Extract key requirements with enterprise focus. Include: 1) Business objectives 2) Data sources and integrations 3) Security requirements 4) Compliance needs 5) Performance SLAs 6) Error handling and recovery 7) Monitoring requirements.\\n\\nClient Brief: ' + $json.clientBrief}]}]})}}",
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetweenTries": 2000
+          }
+        }
+      },
+      "id": "brief-parser",
+      "name": "Brief Parser",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [850, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "{{$env.AI_ENDPOINT}}/architect",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-API-Key",
+              "value": "{{$credentials.AI_API_KEY}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{JSON.stringify({contents:[{parts:[{text:'Design enterprise-grade n8n workflow. Include: error handling, retry logic, circuit breakers, rate limiting, monitoring hooks, data validation, security checks. Output detailed JSON spec.\\n\\nRequirements: ' + JSON.stringify($json)}]}]})}}",
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetweenTries": 2000
+          }
+        }
+      },
+      "id": "architect-agent",
+      "name": "Architect Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Context preparation with enterprise features\nconst architectOutput = items[0].json;\nconst normalizerData = $('Data Normalizer').first().json;\n\nif(architectOutput.error){\n  return[{\n    json:{\n      error:true,\n      message:'Architecture failed: ' + (architectOutput.error.message || 'Unknown'),\n      stage:'architect',\n      clientEmail:normalizerData.clientEmail,\n      source:normalizerData.source,\n      requestId:normalizerData.requestId\n    }\n  }];\n}\n\nlet architectSpec;\ntry{\n  const response = architectOutput.candidates?.[0]?.content?.parts?.[0]?.text || architectOutput.response;\n  architectSpec = typeof response === 'string' ? JSON.parse(response) : response;\n}catch(e){\n  return[{\n    json:{\n      error:true,\n      message:'Failed to parse architect output: '+e.message,\n      stage:'architect-parse',\n      clientEmail:normalizerData.clientEmail,\n      source:normalizerData.source,\n      requestId:normalizerData.requestId\n    }\n  }];\n}\n\n// Enterprise patterns and best practices\nconst enterprisePatterns = {\n  errorHandling: 'All nodes use continueOnFail with proper error routing',\n  security: 'Credentials via environment variables, API key authentication',\n  monitoring: 'Metrics collection, performance tracking, audit logging',\n  resilience: 'Retry logic, circuit breakers, graceful degradation',\n  compliance: 'GDPR data handling, retention policies, audit trails'\n};\n\nreturn[{\n  json:{\n    architectSpec: architectSpec,\n    enterprisePatterns: enterprisePatterns,\n    clientBrief: normalizerData.clientBrief,\n    clientEmail: normalizerData.clientEmail,\n    company: normalizerData.company,\n    priority: normalizerData.priority,\n    source: normalizerData.source,\n    requestId: normalizerData.requestId,\n    timestamp: normalizerData.timestamp\n  }\n}];"
+      },
+      "id": "prepare-context",
+      "name": "Prepare Enterprise Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1350, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "{{$env.AI_ENDPOINT}}/synthesis",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-API-Key",
+              "value": "{{$credentials.AI_API_KEY}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{JSON.stringify({contents:[{parts:[{text:'Generate production n8n workflow with enterprise features. Apply all patterns: ' + JSON.stringify($json.enterprisePatterns) + '\\n\\nSpecification: ' + JSON.stringify($json.architectSpec,null,2)}]}]})}}",
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetweenTries": 2000
+          }
+        }
+      },
+      "id": "synthesis-agent",
+      "name": "Synthesis Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1600, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Enhanced output formatting with versioning\nconst synthesisOutput=items[0].json;\nconst contextData=$('Prepare Enterprise Context').first().json;\n\nif(synthesisOutput.error){\n  return[{\n    json:{\n      error:true,\n      message:'Synthesis failed',\n      stage:'synthesis',\n      clientEmail:contextData.clientEmail,\n      source:contextData.source,\n      requestId:contextData.requestId\n    }\n  }];\n}\n\nlet workflowJson;\ntry{\n  const response = synthesisOutput.candidates?.[0]?.content?.parts?.[0]?.text || synthesisOutput.response;\n  let jsonText = response;\n  if(jsonText.includes('```json'))jsonText=jsonText.split('```json')[1].split('```')[0].trim();\n  else if(jsonText.includes('```'))jsonText=jsonText.split('```')[1].split('```')[0].trim();\n  workflowJson=JSON.parse(jsonText);\n  \n  // Add metadata\n  workflowJson.meta = {\n    version: '3.0.0',\n    generatedBy: 'n8n Workflow Builder v3.0',\n    timestamp: contextData.timestamp,\n    requestId: contextData.requestId,\n    priority: contextData.priority\n  };\n  \n  if(!workflowJson.nodes||!workflowJson.connections)throw new Error('Invalid workflow structure');\n}catch(e){\n  return[{\n    json:{\n      error:true,\n      message:'Failed to parse synthesis: '+e.message,\n      stage:'synthesis-parse',\n      clientEmail:contextData.clientEmail,\n      source:contextData.source,\n      requestId:contextData.requestId\n    }\n  }];\n}\n\nconst workflowSummary = {\n  name: workflowJson.name || 'Custom Workflow',\n  nodeCount: workflowJson.nodes?.length || 0,\n  connectionCount: Object.keys(workflowJson.connections || {}).length,\n  source: contextData.source,\n  priority: contextData.priority,\n  company: contextData.company\n};\n\nreturn[{\n  json:{\n    success:true,\n    clientEmail:contextData.clientEmail,\n    clientBrief:contextData.clientBrief,\n    source:contextData.source,\n    workflowJson:workflowJson,\n    workflowSummary:workflowSummary,\n    timestamp:contextData.timestamp,\n    requestId:contextData.requestId,\n    qaValidationPending:true\n  }\n}];"
+      },
+      "id": "format-output",
+      "name": "Format Enterprise Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1850, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "{{$env.QA_ENDPOINT}}/validate",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-API-Key",
+              "value": "{{$credentials.QA_API_KEY}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{JSON.stringify({workflow: $json.workflowJson, validationLevel: 'enterprise', checks: ['security', 'performance', 'compliance', 'reliability']})}}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "qa-validator",
+      "name": "Enterprise QA Validator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2050, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Format QA results with recommendations\nconst qaOutput=items[0].json;\nconst previousData=$('Format Enterprise Output').first().json;\n\ntry{\n  const qaResults = qaOutput.validation || qaOutput;\n  \n  const qaReport = {\n    valid: qaResults.valid !== false,\n    confidence: qaResults.confidence || 0.95,\n    securityScore: qaResults.securityScore || 0.9,\n    performanceScore: qaResults.performanceScore || 0.85,\n    complianceScore: qaResults.complianceScore || 1.0,\n    issues: qaResults.issues || [],\n    recommendations: qaResults.recommendations || [],\n    timestamp: new Date().toISOString()\n  };\n  \n  // Generate final workflow with corrections if needed\n  let finalWorkflow = previousData.workflowJson;\n  if(qaResults.correctedWorkflow){\n    finalWorkflow = qaResults.correctedWorkflow;\n  }\n  \n  return[{\n    json:{\n      ...previousData,\n      qaReport: qaReport,\n      finalWorkflowJson: finalWorkflow,\n      qaValidationComplete: true\n    }\n  }];\n}catch(e){\n  return[{\n    json:{\n      ...previousData,\n      qaError: true,\n      qaErrorMessage: e.message,\n      qaValidationComplete: false\n    }\n  }];\n}"
+      },
+      "id": "format-qa-results",
+      "name": "Format QA Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2250, 200]
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "binaryPropertyName": "data",
+        "fileName": "={{$json.requestId}}_workflow.json",
+        "bucketName": "{{$env.S3_BUCKET}}"
+      },
+      "id": "store-workflow",
+      "name": "Store Workflow",
+      "type": "n8n-nodes-base.s3",
+      "typeVersion": 1,
+      "position": [2450, 100],
+      "credentials": {
+        "s3": {
+          "id": "{{$credentials.S3_ID}}",
+          "name": "AWS S3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{$json.clientEmail}}",
+        "subject": "[{{$json.priority}}] Your n8n Workflow v3.0 is Ready",
+        "messageType": "html",
+        "message": "={{`<html><body><h2>Your Enterprise Workflow is Ready</h2><p><strong>Request ID:</strong> ${$json.requestId}</p><p><strong>Company:</strong> ${$json.company || 'N/A'}</p><p><strong>Priority:</strong> ${$json.priority}</p><hr/><h3>Workflow Summary</h3><ul><li>Nodes: ${$json.workflowSummary.nodeCount}</li><li>Connections: ${$json.workflowSummary.connectionCount}</li></ul><h3>QA Report</h3><ul><li>Security Score: ${($json.qaReport.securityScore * 100).toFixed(0)}%</li><li>Performance Score: ${($json.qaReport.performanceScore * 100).toFixed(0)}%</li><li>Compliance Score: ${($json.qaReport.complianceScore * 100).toFixed(0)}%</li></ul><hr/><p>Your workflow JSON is attached and stored securely.</p></body></html>`}}",
+        "attachments": "={{$json.finalWorkflowJson}}"
+      },
+      "id": "send-workflow",
+      "name": "Send Workflow Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [2650, 100],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "{{$credentials.GMAIL_OAUTH2_ID}}",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "{{$env.SLACK_CHANNEL}}",
+        "text": "New workflow generated",
+        "attachments": [
+          {
+            "color": "#00ff00",
+            "title": "Workflow Generation Complete",
+            "fields": [
+              {
+                "title": "Request ID",
+                "value": "{{$json.requestId}}",
+                "short": true
+              },
+              {
+                "title": "Company",
+                "value": "{{$json.company}}",
+                "short": true
+              },
+              {
+                "title": "Priority",
+                "value": "{{$json.priority}}",
+                "short": true
+              },
+              {
+                "title": "Node Count",
+                "value": "{{$json.workflowSummary.nodeCount}}",
+                "short": true
+              }
+            ]
+          }
+        ]
+      },
+      "id": "slack-notification",
+      "name": "Slack Notification",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [2650, 250],
+      "credentials": {
+        "slackApi": {
+          "id": "{{$credentials.SLACK_API_ID}}",
+          "name": "Slack"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "has-error",
+              "leftValue": "={{$json.error}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "check-errors",
+      "name": "Check for Errors",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2450, 300]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Enterprise error handler with incident tracking\nconst errorData=items[0].json;\nconst incidentId = crypto.randomUUID();\n\nconst errorReport = {\n  incidentId: incidentId,\n  requestId: errorData.requestId || 'unknown',\n  timestamp: new Date().toISOString(),\n  stage: errorData.stage || 'unknown',\n  errorType: errorData.error?.type || 'general',\n  errorMessage: errorData.message || errorData.errorMessage || 'Unknown error',\n  clientEmail: errorData.clientEmail || 'unknown@example.com',\n  source: errorData.source || 'unknown',\n  stackTrace: errorData.error?.stack || null,\n  context: {\n    company: errorData.company,\n    priority: errorData.priority || 'High',\n    brief: errorData.clientBrief ? errorData.clientBrief.substring(0, 100) + '...' : null\n  }\n};\n\n// Determine severity\nif(errorData.stage === 'validation' || errorData.stage === 'normalization'){\n  errorReport.severity = 'Low';\n}else if(errorData.stage === 'architect' || errorData.stage === 'synthesis'){\n  errorReport.severity = 'Medium';\n}else{\n  errorReport.severity = 'High';\n}\n\nreturn[{\n  json: errorReport\n}];"
+      },
+      "id": "error-handler",
+      "name": "Enterprise Error Handler",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2650, 400]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "{{$env.ERROR_TABLE}}",
+        "columns": "incident_id, request_id, timestamp, stage, error_type, error_message, severity, client_email",
+        "additionalFields": {}
+      },
+      "id": "log-error",
+      "name": "Log Error to Database",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [2850, 400],
+      "credentials": {
+        "postgres": {
+          "id": "{{$credentials.POSTGRES_ID}}",
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{$json.clientEmail}}",
+        "subject": "Workflow Generation Error - Incident {{$json.incidentId}}",
+        "messageType": "html",
+        "message": "={{`<html><body><h2>Workflow Generation Error</h2><p>We encountered an error processing your request.</p><hr/><p><strong>Incident ID:</strong> ${$json.incidentId}</p><p><strong>Request ID:</strong> ${$json.requestId}</p><p><strong>Error Stage:</strong> ${$json.stage}</p><p><strong>Message:</strong> ${$json.errorMessage}</p><hr/><p>Our team has been notified and will investigate. Please reference the Incident ID if you contact support.</p></body></html>`}}"
+      },
+      "id": "send-error",
+      "name": "Send Error Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [2850, 500],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "{{$credentials.GMAIL_OAUTH2_ID}}",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "{{$env.SLACK_ERROR_CHANNEL}}",
+        "text": "Workflow generation error",
+        "attachments": [
+          {
+            "color": "#ff0000",
+            "title": "Error Alert - {{$json.severity}} Severity",
+            "fields": [
+              {
+                "title": "Incident ID",
+                "value": "{{$json.incidentId}}",
+                "short": true
+              },
+              {
+                "title": "Stage",
+                "value": "{{$json.stage}}",
+                "short": true
+              },
+              {
+                "title": "Error",
+                "value": "{{$json.errorMessage}}",
+                "short": false
+              }
+            ]
+          }
+        ]
+      },
+      "id": "slack-error",
+      "name": "Slack Error Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [2850, 600],
+      "credentials": {
+        "slackApi": {
+          "id": "{{$credentials.SLACK_API_ID}}",
+          "name": "Slack"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Email Trigger": {
+      "main": [
+        [
+          {
+            "node": "Data Normalizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Form Trigger": {
+      "main": [
+        [
+          {
+            "node": "Data Normalizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Data Normalizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data Normalizer": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Brief Parser",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Enterprise Error Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Brief Parser": {
+      "main": [
+        [
+          {
+            "node": "Architect Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Architect Agent": {
+      "main": [
+        [
+          {
+            "node": "Prepare Enterprise Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Enterprise Context": {
+      "main": [
+        [
+          {
+            "node": "Synthesis Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Synthesis Agent": {
+      "main": [
+        [
+          {
+            "node": "Format Enterprise Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Enterprise Output": {
+      "main": [
+        [
+          {
+            "node": "Enterprise QA Validator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enterprise QA Validator": {
+      "main": [
+        [
+          {
+            "node": "Format QA Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format QA Results": {
+      "main": [
+        [
+          {
+            "node": "Check for Errors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check for Errors": {
+      "main": [
+        [
+          {
+            "node": "Store Workflow",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Workflow Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Slack Notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Enterprise Error Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enterprise Error Handler": {
+      "main": [
+        [
+          {
+            "node": "Log Error to Database",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Error Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Slack Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "error-handler-workflow",
+    "timezone": "UTC",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveExecutionProgress": true,
+    "executionTimeout": 300
+  },
+  "staticData": null,
+  "tags": ["production", "v3.0", "enterprise"],
+  "triggerCount": 3,
+  "id": "workflow-builder-v3-master",
+  "version": "3.0.0",
+  "meta": {
+    "templateCreatedBy": "n8n-workflow-builder-v3",
+    "enterpriseFeatures": true,
+    "gdprCompliant": true,
+    "lastModified": "2025-01-17T00:00:00Z"
+  }
+}

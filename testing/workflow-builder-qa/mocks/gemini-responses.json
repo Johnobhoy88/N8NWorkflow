@@ -1,0 +1,138 @@
+{
+  "brief_parser_success": {
+    "candidates": [
+      {
+        "content": {
+          "parts": [
+            {
+              "text": "## Extracted Requirements\n\n1. **Primary Goal**: Sync HubSpot deals to Asana projects automatically\n\n2. **Data Sources**: \n   - HubSpot CRM (Deals)\n   - Deal stage changes (specifically 'Closed Won')\n\n3. **Processing Steps**:\n   - Monitor HubSpot for deal stage changes\n   - Extract deal details (name, amount, company)\n   - Map deal data to Asana project structure\n   - Create project in Asana\n   - Populate custom fields\n\n4. **Output Destinations**:\n   - Asana (project creation)\n   - Slack (team notifications)\n\n5. **Error Handling Needs**:\n   - API connection failures\n   - Data validation\n   - Duplicate prevention\n   - Retry logic for failed operations\n\n6. **Constraints**:\n   - Real-time or near-real-time sync\n   - No data loss\n   - Maintain data integrity between systems"
+            }
+          ]
+        },
+        "finishReason": "STOP"
+      }
+    ]
+  },
+  "architect_success": {
+    "candidates": [
+      {
+        "content": {
+          "parts": [
+            {
+              "text": "```json\n{\n  \"project_summary\": \"HubSpot to Asana workflow with Slack notifications\",\n  \"nodes_required\": [\n    {\"name\": \"HubSpot Trigger\", \"type\": \"n8n-nodes-base.hubspotTrigger\", \"position\": [250, 300]},\n    {\"name\": \"Filter Closed Won\", \"type\": \"n8n-nodes-base.if\", \"position\": [450, 300]},\n    {\"name\": \"Extract Deal Data\", \"type\": \"n8n-nodes-base.code\", \"position\": [650, 300]},\n    {\"name\": \"Create Asana Project\", \"type\": \"n8n-nodes-base.asana\", \"position\": [850, 300]},\n    {\"name\": \"Notify Slack\", \"type\": \"n8n-nodes-base.slack\", \"position\": [1050, 300]}\n  ],\n  \"connection_paths\": [\n    {\"from\": \"HubSpot Trigger\", \"to\": \"Filter Closed Won\"},\n    {\"from\": \"Filter Closed Won\", \"to\": \"Extract Deal Data\", \"condition\": \"true\"},\n    {\"from\": \"Extract Deal Data\", \"to\": \"Create Asana Project\"},\n    {\"from\": \"Create Asana Project\", \"to\": \"Notify Slack\"}\n  ],\n  \"data_schema\": {\n    \"deal\": {\"id\": \"string\", \"name\": \"string\", \"amount\": \"number\", \"company\": \"string\"},\n    \"project\": {\"name\": \"string\", \"workspace\": \"string\", \"custom_fields\": \"object\"}\n  }\n}\n```"
+            }
+          ]
+        },
+        "finishReason": "STOP"
+      }
+    ]
+  },
+  "synthesis_success": {
+    "candidates": [
+      {
+        "content": {
+          "parts": [
+            {
+              "text": "```json\n{\n  \"name\": \"HubSpot to Asana Sync\",\n  \"nodes\": [\n    {\n      \"parameters\": {\n        \"event\": \"deal.propertyChange\",\n        \"filters\": {\n          \"propertyName\": \"dealstage\",\n          \"propertyValue\": \"closedwon\"\n        }\n      },\n      \"id\": \"hubspot-trigger\",\n      \"name\": \"HubSpot Trigger\",\n      \"type\": \"n8n-nodes-base.hubspotTrigger\",\n      \"typeVersion\": 1,\n      \"position\": [250, 300]\n    },\n    {\n      \"parameters\": {\n        \"resource\": \"project\",\n        \"operation\": \"create\",\n        \"workspace\": \"={{$json.workspace_id}}\",\n        \"name\": \"={{\\\"Onboarding: \\\" + $json.company}}\"\n      },\n      \"id\": \"asana-create\",\n      \"name\": \"Create Asana Project\",\n      \"type\": \"n8n-nodes-base.asana\",\n      \"typeVersion\": 1,\n      \"position\": [450, 300]\n    }\n  ],\n  \"connections\": {\n    \"HubSpot Trigger\": {\"main\": [[{\"node\": \"Create Asana Project\", \"type\": \"main\", \"index\": 0}]]}\n  }\n}\n```"
+            }
+          ]
+        },
+        "finishReason": "STOP"
+      }
+    ]
+  },
+  "qa_validator_success": {
+    "candidates": [
+      {
+        "content": {
+          "parts": [
+            {
+              "text": "```json\n{\n  \"valid\": true,\n  \"issues\": [],\n  \"confidence\": 0.95,\n  \"summary\": \"Workflow validation passed. All node IDs are unique, positions are valid, connections are properly structured, and no hardcoded credentials detected.\",\n  \"checks\": {\n    \"unique_ids\": true,\n    \"valid_positions\": true,\n    \"valid_connections\": true,\n    \"required_fields\": true,\n    \"no_hardcoded_keys\": true\n  }\n}\n```"
+            }
+          ]
+        },
+        "finishReason": "STOP"
+      }
+    ]
+  },
+  "qa_validator_with_issues": {
+    "candidates": [
+      {
+        "content": {
+          "parts": [
+            {
+              "text": "```json\n{\n  \"valid\": false,\n  \"issues\": [\n    \"Duplicate node ID found: 'node-1'\",\n    \"Missing position coordinates for node: 'Data Processor'\",\n    \"Hardcoded API key detected in HTTP Request node\"\n  ],\n  \"confidence\": 0.6,\n  \"summary\": \"Workflow has critical issues that must be fixed before deployment.\",\n  \"checks\": {\n    \"unique_ids\": false,\n    \"valid_positions\": false,\n    \"valid_connections\": true,\n    \"required_fields\": true,\n    \"no_hardcoded_keys\": false\n  },\n  \"correctedWorkflow\": null\n}\n```"
+            }
+          ]
+        },
+        "finishReason": "STOP"
+      }
+    ]
+  },
+  "api_error_rate_limit": {
+    "error": {
+      "code": 429,
+      "message": "Resource has been exhausted (e.g. check quota).",
+      "status": "RESOURCE_EXHAUSTED"
+    }
+  },
+  "api_error_invalid_key": {
+    "error": {
+      "code": 400,
+      "message": "API key not valid. Please pass a valid API key.",
+      "status": "INVALID_ARGUMENT"
+    }
+  },
+  "api_error_server": {
+    "error": {
+      "code": 500,
+      "message": "Internal server error",
+      "status": "INTERNAL"
+    }
+  },
+  "brief_parser_malformed": {
+    "candidates": [
+      {
+        "content": {
+          "parts": [
+            {
+              "text": "This is not JSON, just plain text response"
+            }
+          ]
+        },
+        "finishReason": "STOP"
+      }
+    ]
+  },
+  "architect_malformed": {
+    "candidates": [
+      {
+        "content": {
+          "parts": [
+            {
+              "text": "```json\n{invalid json here"
+            }
+          ]
+        },
+        "finishReason": "STOP"
+      }
+    ]
+  },
+  "synthesis_incomplete": {
+    "candidates": [
+      {
+        "content": {
+          "parts": [
+            {
+              "text": "```json\n{\n  \"name\": \"Incomplete Workflow\",\n  \"nodes\": []\n}\n```"
+            }
+          ]
+        },
+        "finishReason": "STOP"
+      }
+    ]
+  },
+  "empty_response": {
+    "candidates": []
+  }
+}

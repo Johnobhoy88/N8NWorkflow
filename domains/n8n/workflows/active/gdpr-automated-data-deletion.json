@@ -1,0 +1,625 @@
+{
+  "name": "GDPR Automated Data Deletion Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Daily Schedule (Midnight)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300],
+      "notes": "Runs daily at midnight to check for expired data"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  retention_id,\n  user_email,\n  data_type,\n  data_identifier,\n  created_at,\n  expires_at,\n  retention_days,\n  EXTRACT(DAY FROM (NOW() - expires_at)) as days_overdue\nFROM data_retention_schedule\nWHERE deleted = false\n  AND expires_at <= NOW()\n  AND auto_delete = true\n  AND legal_hold = false\n  AND deletion_scheduled = false\nORDER BY expires_at ASC\nLIMIT 100;",
+        "options": {}
+      },
+      "id": "find-expired-data",
+      "name": "Find Expired Data",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [450, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-gdpr-audit",
+          "name": "PostgreSQL GDPR Audit DB"
+        }
+      },
+      "notes": "Query data_retention_schedule for expired records that need deletion"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "has-records",
+              "leftValue": "={{$json.length}}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "check-if-records-found",
+      "name": "Check if Records Found",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-in-batches",
+      "name": "Process Each Record",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE data_retention_schedule\nSET deletion_scheduled = true,\n    deletion_scheduled_at = NOW(),\n    status = 'scheduled_deletion'\nWHERE retention_id = '{{$json.retention_id}}';",
+        "options": {}
+      },
+      "id": "mark-as-scheduled",
+      "name": "Mark as Scheduled for Deletion",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1050, 200],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-gdpr-audit",
+          "name": "PostgreSQL GDPR Audit DB"
+        }
+      },
+      "notes": "Mark record as scheduled before actual deletion"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Determine deletion strategy based on data type\nconst record = items[0].json;\nconst dataType = record.data_type;\nconst userEmail = record.user_email;\nconst dataIdentifier = record.data_identifier;\n\n// Define deletion queries for different data types\nconst deletionStrategies = {\n  'workflow_generation_request': {\n    description: 'Delete workflow generation request data',\n    queries: [\n      `DELETE FROM workflow_requests WHERE user_email = '${userEmail}' AND created_at < NOW() - INTERVAL '${record.retention_days} days'`,\n      `DELETE FROM workflow_outputs WHERE user_email = '${userEmail}' AND created_at < NOW() - INTERVAL '${record.retention_days} days'`\n    ]\n  },\n  'user_submissions': {\n    description: 'Delete user submission data',\n    queries: [\n      `DELETE FROM user_submissions WHERE user_email = '${userEmail}' AND submission_date < NOW() - INTERVAL '${record.retention_days} days'`\n    ]\n  },\n  'temporary_files': {\n    description: 'Delete temporary files',\n    queries: [\n      `DELETE FROM temporary_files WHERE user_email = '${userEmail}' AND created_at < NOW() - INTERVAL '${record.retention_days} days'`\n    ],\n    fileCleanup: true,\n    filePath: dataIdentifier\n  },\n  'api_logs': {\n    description: 'Delete API call logs (non-audit)',\n    queries: [\n      `DELETE FROM api_call_logs WHERE user_email = '${userEmail}' AND timestamp < NOW() - INTERVAL '${record.retention_days} days'`\n    ]\n  },\n  'consent_records_expired': {\n    description: 'Archive expired consent records (not delete - legal requirement)',\n    queries: [\n      `UPDATE consent_records SET status = 'expired', updated_at = NOW() WHERE user_email = '${userEmail}' AND status = 'active' AND expiry_date < NOW()`\n    ],\n    isArchive: true\n  }\n};\n\nconst strategy = deletionStrategies[dataType] || {\n  description: 'Unknown data type - manual review required',\n  queries: [],\n  requiresManualReview: true\n};\n\nreturn [{\n  json: {\n    retention_id: record.retention_id,\n    user_email: userEmail,\n    data_type: dataType,\n    data_identifier: dataIdentifier,\n    deletion_strategy: strategy.description,\n    queries: strategy.queries,\n    file_cleanup: strategy.fileCleanup || false,\n    file_path: strategy.filePath || null,\n    is_archive: strategy.isArchive || false,\n    requires_manual_review: strategy.requiresManualReview || false,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "determine-deletion-strategy",
+      "name": "Determine Deletion Strategy",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 200],
+      "notes": "Determines how to delete data based on type"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "requires-manual",
+              "leftValue": "={{$json.requires_manual_review}}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "check-if-automated",
+      "name": "Can Auto-Delete?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1450, 200]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Execute deletion queries\nconst data = items[0].json;\nconst queries = data.queries || [];\nconst results = [];\n\nfor (const query of queries) {\n  results.push({\n    query: query,\n    executed: false,\n    error: null\n  });\n}\n\nreturn [{\n  json: {\n    retention_id: data.retention_id,\n    user_email: data.user_email,\n    data_type: data.data_type,\n    deletion_queries: results,\n    query_count: queries.length,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "prepare-deletion-queries",
+      "name": "Prepare Deletion Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1650, 100],
+      "notes": "Prepare queries for execution"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{$json.deletion_queries[0]?.query || 'SELECT 1'}}",
+        "options": {}
+      },
+      "id": "execute-deletion-query-1",
+      "name": "Execute Deletion Query 1",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1850, 100],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-gdpr-audit",
+          "name": "PostgreSQL GDPR Audit DB"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{$json.deletion_queries[1]?.query || 'SELECT 1'}}",
+        "options": {}
+      },
+      "id": "execute-deletion-query-2",
+      "name": "Execute Deletion Query 2",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2050, 100],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-gdpr-audit",
+          "name": "PostgreSQL GDPR Audit DB"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO gdpr_audit_log (\n  event_type,\n  user_email,\n  event_data,\n  consent_status,\n  processing_purpose\n)\nVALUES (\n  'data_deleted',\n  '{{$json.user_email}}',\n  '{\"data_type\": \"{{$json.data_type}}\", \"retention_id\": \"{{$json.retention_id}}\", \"deletion_method\": \"automatic\", \"queries_executed\": {{$json.query_count}}}',\n  'valid',\n  'data_retention_compliance'\n);",
+        "options": {}
+      },
+      "id": "log-deletion-audit",
+      "name": "Log Deletion in Audit Trail",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2250, 100],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-gdpr-audit",
+          "name": "PostgreSQL GDPR Audit DB"
+        }
+      },
+      "notes": "CRITICAL: Log deletion for compliance audit trail"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE data_retention_schedule\nSET deleted = true,\n    deleted_at = NOW(),\n    deletion_method = 'automatic',\n    status = 'deleted'\nWHERE retention_id = '{{$json.retention_id}}';",
+        "options": {}
+      },
+      "id": "mark-as-deleted",
+      "name": "Mark as Deleted",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2450, 100],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-gdpr-audit",
+          "name": "PostgreSQL GDPR Audit DB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO manual_review_queue (\n  retention_id,\n  user_email,\n  data_type,\n  reason,\n  priority,\n  created_at\n)\nVALUES (\n  '{{$json.retention_id}}',\n  '{{$json.user_email}}',\n  '{{$json.data_type}}',\n  'Requires manual review for deletion',\n  'medium',\n  NOW()\n);",
+        "options": {}
+      },
+      "id": "queue-manual-review",
+      "name": "Queue for Manual Review",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1650, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-gdpr-audit",
+          "name": "PostgreSQL GDPR Audit DB"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO gdpr_audit_log (\n  event_type,\n  user_email,\n  event_data,\n  consent_status,\n  processing_purpose\n)\nVALUES (\n  'manual_review_required',\n  '{{$json.user_email}}',\n  '{\"data_type\": \"{{$json.data_type}}\", \"retention_id\": \"{{$json.retention_id}}\", \"reason\": \"requires_manual_deletion\"}',\n  'valid',\n  'data_retention_compliance'\n);",
+        "options": {}
+      },
+      "id": "log-manual-review",
+      "name": "Log Manual Review Required",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1850, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-gdpr-audit",
+          "name": "PostgreSQL GDPR Audit DB"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "dpo@example.com",
+        "subject": "GDPR Manual Review Required - Data Deletion",
+        "messageType": "html",
+        "message": "={{`<h2>Manual Review Required</h2>\n<p>The following data deletion requires manual review:</p>\n<ul>\n  <li><strong>User Email:</strong> ${$json.user_email}</li>\n  <li><strong>Data Type:</strong> ${$json.data_type}</li>\n  <li><strong>Retention ID:</strong> ${$json.retention_id}</li>\n  <li><strong>Data Identifier:</strong> ${$json.data_identifier || 'N/A'}</li>\n</ul>\n<p>Please review and process this deletion manually.</p>`}}"
+      },
+      "id": "notify-dpo",
+      "name": "Notify Data Protection Officer",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [2050, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-oauth2",
+          "name": "Gmail OAuth2"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Generate deletion summary report\nconst batches = $('Process Each Record').all();\n\nconst summary = {\n  total_records_processed: batches.length,\n  automated_deletions: 0,\n  manual_reviews: 0,\n  errors: 0,\n  timestamp: new Date().toISOString()\n};\n\nfor (const batch of batches) {\n  if (batch.json.requires_manual_review) {\n    summary.manual_reviews++;\n  } else if (batch.json.error) {\n    summary.errors++;\n  } else {\n    summary.automated_deletions++;\n  }\n}\n\nreturn [{\n  json: summary\n}];"
+      },
+      "id": "generate-summary",
+      "name": "Generate Deletion Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2650, 200],
+      "notes": "Aggregates results from all processed records"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO deletion_job_history (\n  job_timestamp,\n  total_records,\n  automated_deletions,\n  manual_reviews,\n  errors,\n  status\n)\nVALUES (\n  '{{$json.timestamp}}',\n  {{$json.total_records_processed}},\n  {{$json.automated_deletions}},\n  {{$json.manual_reviews}},\n  {{$json.errors}},\n  'completed'\n);",
+        "options": {}
+      },
+      "id": "log-job-summary",
+      "name": "Log Job Summary",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2850, 200],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-gdpr-audit",
+          "name": "PostgreSQL GDPR Audit DB"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "has-activity",
+              "leftValue": "={{$json.total_records_processed}}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "should-notify",
+      "name": "Should Send Summary Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [3050, 200]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "dpo@example.com",
+        "subject": "GDPR Daily Deletion Report - {{$json.timestamp}}",
+        "messageType": "html",
+        "message": "={{`<div style=\"font-family: Arial, sans-serif; padding: 20px;\">\n  <h2>GDPR Automated Deletion Daily Report</h2>\n  <p><strong>Date:</strong> ${new Date($json.timestamp).toLocaleDateString()}</p>\n  \n  <table style=\"border-collapse: collapse; width: 100%; margin: 20px 0;\">\n    <tr style=\"background: #f5f5f5;\">\n      <th style=\"border: 1px solid #ddd; padding: 12px; text-align: left;\">Metric</th>\n      <th style=\"border: 1px solid #ddd; padding: 12px; text-align: right;\">Count</th>\n    </tr>\n    <tr>\n      <td style=\"border: 1px solid #ddd; padding: 8px;\">Total Records Processed</td>\n      <td style=\"border: 1px solid #ddd; padding: 8px; text-align: right;\">${$json.total_records_processed}</td>\n    </tr>\n    <tr style=\"background: #e8f5e9;\">\n      <td style=\"border: 1px solid #ddd; padding: 8px;\">Automated Deletions</td>\n      <td style=\"border: 1px solid #ddd; padding: 8px; text-align: right;\">${$json.automated_deletions}</td>\n    </tr>\n    <tr style=\"background: #fff3e0;\">\n      <td style=\"border: 1px solid #ddd; padding: 8px;\">Manual Reviews Required</td>\n      <td style=\"border: 1px solid #ddd; padding: 8px; text-align: right;\">${$json.manual_reviews}</td>\n    </tr>\n    <tr style=\"background: #ffebee;\">\n      <td style=\"border: 1px solid #ddd; padding: 8px;\">Errors</td>\n      <td style=\"border: 1px solid #ddd; padding: 8px; text-align: right;\">${$json.errors}</td>\n    </tr>\n  </table>\n  \n  <p style=\"font-size: 13px; color: #666; margin-top: 30px;\">\n    This is an automated GDPR compliance report. All deletion activities are logged in the audit trail.\n  </p>\n</div>`}}"
+      },
+      "id": "send-daily-report",
+      "name": "Send Daily Report",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [3250, 100],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-oauth2",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// No records to process - generate empty summary\nreturn [{\n  json: {\n    total_records_processed: 0,\n    automated_deletions: 0,\n    manual_reviews: 0,\n    errors: 0,\n    message: 'No expired data found for deletion',\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "no-records-handler",
+      "name": "No Records to Process",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 400]
+    }
+  ],
+  "connections": {
+    "Daily Schedule (Midnight)": {
+      "main": [
+        [
+          {
+            "node": "Find Expired Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Expired Data": {
+      "main": [
+        [
+          {
+            "node": "Check if Records Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check if Records Found": {
+      "main": [
+        [
+          {
+            "node": "Process Each Record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Records to Process",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Each Record": {
+      "main": [
+        [
+          {
+            "node": "Mark as Scheduled for Deletion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Scheduled for Deletion": {
+      "main": [
+        [
+          {
+            "node": "Determine Deletion Strategy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine Deletion Strategy": {
+      "main": [
+        [
+          {
+            "node": "Can Auto-Delete?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Can Auto-Delete?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Deletion Queries",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Queue for Manual Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Deletion Queries": {
+      "main": [
+        [
+          {
+            "node": "Execute Deletion Query 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Deletion Query 1": {
+      "main": [
+        [
+          {
+            "node": "Execute Deletion Query 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Deletion Query 2": {
+      "main": [
+        [
+          {
+            "node": "Log Deletion in Audit Trail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Deletion in Audit Trail": {
+      "main": [
+        [
+          {
+            "node": "Mark as Deleted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Deleted": {
+      "main": [
+        [
+          {
+            "node": "Process Each Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue for Manual Review": {
+      "main": [
+        [
+          {
+            "node": "Log Manual Review Required",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Manual Review Required": {
+      "main": [
+        [
+          {
+            "node": "Notify Data Protection Officer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Data Protection Officer": {
+      "main": [
+        [
+          {
+            "node": "Process Each Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Deletion Summary": {
+      "main": [
+        [
+          {
+            "node": "Log Job Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Job Summary": {
+      "main": [
+        [
+          {
+            "node": "Should Send Summary Email?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Send Summary Email?": {
+      "main": [
+        [
+          {
+            "node": "Send Daily Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Daily Report": {
+      "main": [[]]
+    },
+    "No Records to Process": {
+      "main": [[]]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "timezone": "America/New_York",
+    "executionTimeout": 3600
+  },
+  "id": "gdpr-automated-data-deletion",
+  "tags": [
+    {
+      "id": "gdpr-compliance",
+      "name": "gdpr-compliance"
+    },
+    {
+      "id": "automated",
+      "name": "automated"
+    },
+    {
+      "id": "data-retention",
+      "name": "data-retention"
+    }
+  ],
+  "meta": {
+    "instanceId": "gdpr-data-deletion-scheduler",
+    "gdprCompliant": true,
+    "purpose": "Automated data deletion per GDPR Article 17 (Right to Erasure) and retention policies",
+    "schedule": "Daily at midnight",
+    "retentionPeriod": "30 days default"
+  },
+  "version": 1,
+  "versionId": "gdpr-deletion-v1.0"
+}

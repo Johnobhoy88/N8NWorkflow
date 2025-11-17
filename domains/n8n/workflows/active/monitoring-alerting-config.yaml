@@ -1,0 +1,714 @@
+# Monitoring and Alerting Configuration
+# n8n Workflow Builder - Production Grade Error Handling
+# Version: 1.0.0
+# Last Updated: 2025-11-17
+
+metadata:
+  workflow_name: "n8n Workflow Builder (Gemini) - Production Grade"
+  workflow_id: "workflow-builder-gemini-v2-qa-production"
+  environment: "production"
+  owner_team: "automation-engineering"
+  oncall_rotation: "workflow-ops"
+
+# ==============================================================================
+# METRICS COLLECTION
+# ==============================================================================
+
+metrics:
+  collection_interval: "1m"  # Collect metrics every minute
+
+  # Core workflow metrics
+  workflow_metrics:
+    - name: "workflow_executions_total"
+      type: "counter"
+      description: "Total number of workflow executions"
+      labels:
+        - workflow_id
+        - source  # email, form
+        - status  # success, error
+
+    - name: "workflow_execution_duration_seconds"
+      type: "histogram"
+      description: "Time taken for workflow execution"
+      buckets: [1, 5, 10, 30, 60, 120, 300]  # seconds
+      labels:
+        - workflow_id
+        - source
+        - stage
+
+    - name: "workflow_errors_total"
+      type: "counter"
+      description: "Total number of errors by type"
+      labels:
+        - error_code
+        - stage
+        - severity
+        - source
+
+    - name: "workflow_success_rate"
+      type: "gauge"
+      description: "Percentage of successful executions"
+      calculation: "(success_count / total_count) * 100"
+      window: "5m"
+
+  # API-specific metrics
+  api_metrics:
+    - name: "gemini_api_requests_total"
+      type: "counter"
+      description: "Total Gemini API requests"
+      labels:
+        - endpoint
+        - status_code
+        - retry_attempt
+
+    - name: "gemini_api_latency_seconds"
+      type: "histogram"
+      description: "Gemini API response time"
+      buckets: [0.5, 1, 2, 5, 10, 30]
+      labels:
+        - endpoint
+
+    - name: "gemini_api_errors_total"
+      type: "counter"
+      description: "Gemini API errors"
+      labels:
+        - error_type  # timeout, rate_limit, server_error, parse_error
+        - endpoint
+
+    - name: "gemini_api_rate_limit_remaining"
+      type: "gauge"
+      description: "Remaining API quota"
+      labels:
+        - endpoint
+
+  # Email delivery metrics
+  email_metrics:
+    - name: "email_sent_total"
+      type: "counter"
+      description: "Total emails sent"
+      labels:
+        - service  # gmail, sendgrid
+        - type     # success, error
+        - status   # sent, failed
+
+    - name: "email_delivery_latency_seconds"
+      type: "histogram"
+      description: "Time to send email"
+      buckets: [1, 3, 5, 10, 30]
+      labels:
+        - service
+
+    - name: "email_fallback_triggered_total"
+      type: "counter"
+      description: "Number of times fallback email service was used"
+      labels:
+        - primary_service
+        - fallback_service
+
+  # Error handler metrics
+  error_handler_metrics:
+    - name: "error_handler_invocations_total"
+      type: "counter"
+      description: "Number of times error handler was triggered"
+      labels:
+        - trigger_stage
+        - severity
+
+    - name: "admin_notifications_sent_total"
+      type: "counter"
+      description: "Admin notifications sent"
+      labels:
+        - severity
+        - notification_method
+
+# ==============================================================================
+# HEALTH CHECKS
+# ==============================================================================
+
+health_checks:
+  # Workflow availability check
+  - name: "workflow_availability"
+    type: "http"
+    endpoint: "${N8N_BASE_URL}/api/v1/workflows/${WORKFLOW_ID}"
+    interval: "1m"
+    timeout: "10s"
+    expected_status: 200
+    alert_on_failure: true
+
+  # Workflow can execute check
+  - name: "workflow_execution_test"
+    type: "synthetic"
+    description: "Test workflow execution with synthetic data"
+    interval: "5m"
+    test_data:
+      Client Brief: "Test health check workflow"
+      Your Email: "healthcheck@example.com"
+    expected_result: "error or success"  # Should complete, not hang
+    timeout: "120s"
+    alert_on_failure: true
+
+  # Gemini API health
+  - name: "gemini_api_health"
+    type: "http"
+    endpoint: "https://generativelanguage.googleapis.com/v1beta/models"
+    interval: "2m"
+    timeout: "10s"
+    headers:
+      x-goog-api-key: "${GEMINI_API_KEY}"
+    expected_status: 200
+    alert_on_failure: true
+
+  # Email service health (Gmail)
+  - name: "gmail_api_health"
+    type: "oauth_check"
+    service: "gmail"
+    interval: "5m"
+    check_type: "credential_validity"
+    alert_on_failure: true
+
+  # Error logging endpoint health
+  - name: "error_logging_endpoint_health"
+    type: "http"
+    endpoint: "${ERROR_LOGGING_WEBHOOK_URL}/health"
+    interval: "2m"
+    timeout: "5s"
+    expected_status: 200
+    alert_on_failure: false  # Optional service
+
+# ==============================================================================
+# ALERT RULES
+# ==============================================================================
+
+alert_rules:
+  # CRITICAL ALERTS (P0 - Immediate Response Required)
+  critical:
+    - name: "WorkflowCompletelyDown"
+      severity: "critical"
+      priority: "P0"
+      condition: |
+        workflow_success_rate{workflow_id="workflow-builder-gemini-v2-qa-production"} < 10
+        for: 5m
+      description: "Workflow success rate below 10% for 5 minutes"
+      notification_channels:
+        - pagerduty
+        - slack_critical
+        - email_oncall
+      actions:
+        - trigger_pagerduty_incident
+        - post_to_slack_channel: "#incidents"
+        - email_oncall_engineer
+      runbook: "https://docs.example.com/runbooks/workflow-down"
+
+    - name: "ErrorHandlerFailure"
+      severity: "critical"
+      priority: "P0"
+      condition: |
+        workflow_errors_total{error_code="ERROR_HANDLER_FAILURE"} > 0
+      description: "Error handler itself has failed - manual intervention required"
+      notification_channels:
+        - pagerduty
+        - slack_critical
+        - email_oncall
+      actions:
+        - trigger_pagerduty_incident
+        - post_to_slack_channel: "#incidents"
+      runbook: "https://docs.example.com/runbooks/error-handler-failure"
+
+    - name: "GeminiAPICompleteFailure"
+      severity: "critical"
+      priority: "P0"
+      condition: |
+        rate(gemini_api_errors_total[5m]) > 0.9 AND
+        sum(gemini_api_requests_total{status_code!~"2.."}) > 20
+      description: "Gemini API is completely unavailable"
+      notification_channels:
+        - pagerduty
+        - slack_critical
+      actions:
+        - trigger_pagerduty_incident
+        - post_to_slack_channel: "#automation-alerts"
+      runbook: "https://docs.example.com/runbooks/gemini-api-down"
+
+    - name: "NoExecutionsForExtendedPeriod"
+      severity: "critical"
+      priority: "P1"
+      condition: |
+        rate(workflow_executions_total[30m]) == 0 AND
+        day_of_week() in (1,2,3,4,5) AND  # Weekdays only
+        hour() >= 9 AND hour() <= 17       # Business hours
+      description: "No workflow executions for 30 minutes during business hours"
+      notification_channels:
+        - slack_critical
+        - email_team
+      runbook: "https://docs.example.com/runbooks/no-executions"
+
+  # HIGH PRIORITY ALERTS (P1 - Respond within 30 minutes)
+  high:
+    - name: "HighErrorRate"
+      severity: "high"
+      priority: "P1"
+      condition: |
+        rate(workflow_errors_total[5m]) > 10
+      description: "More than 10 errors per minute for 5 minutes"
+      notification_channels:
+        - slack_alerts
+        - email_team
+      actions:
+        - post_to_slack_channel: "#automation-alerts"
+        - email_team_lead
+      runbook: "https://docs.example.com/runbooks/high-error-rate"
+
+    - name: "GeminiAPIRateLimitExceeded"
+      severity: "high"
+      priority: "P1"
+      condition: |
+        sum(gemini_api_errors_total{error_type="rate_limit"}[10m]) > 5
+      description: "Gemini API rate limit exceeded multiple times"
+      notification_channels:
+        - slack_alerts
+        - email_admin
+      actions:
+        - post_to_slack_channel: "#automation-alerts"
+        - create_jira_ticket
+      runbook: "https://docs.example.com/runbooks/rate-limit"
+
+    - name: "GeminiAPIHighLatency"
+      severity: "high"
+      priority: "P1"
+      condition: |
+        histogram_quantile(0.95, gemini_api_latency_seconds) > 10
+        for: 5m
+      description: "95th percentile Gemini API latency > 10 seconds"
+      notification_channels:
+        - slack_alerts
+      runbook: "https://docs.example.com/runbooks/api-latency"
+
+    - name: "EmailDeliveryFailureSpike"
+      severity: "high"
+      priority: "P1"
+      condition: |
+        rate(email_sent_total{status="failed"}[10m]) > 5
+      description: "Email delivery failures spiking"
+      notification_channels:
+        - slack_alerts
+        - email_admin
+      actions:
+        - check_email_service_status
+        - verify_credentials
+      runbook: "https://docs.example.com/runbooks/email-failures"
+
+    - name: "ArchitectAgentFailurePattern"
+      severity: "high"
+      priority: "P1"
+      condition: |
+        sum(workflow_errors_total{stage="architect"}[10m]) > 5
+      description: "Multiple architect agent failures - possible API issue"
+      notification_channels:
+        - slack_alerts
+      runbook: "https://docs.example.com/runbooks/architect-failures"
+
+  # MEDIUM PRIORITY ALERTS (P2 - Respond within 4 hours)
+  medium:
+    - name: "SuccessRateDecline"
+      severity: "medium"
+      priority: "P2"
+      condition: |
+        workflow_success_rate{workflow_id="workflow-builder-gemini-v2-qa-production"} < 70
+        for: 15m
+      description: "Workflow success rate below 70%"
+      notification_channels:
+        - slack_monitoring
+        - email_daily_digest
+
+    - name: "EmailFallbackUsage"
+      severity: "medium"
+      priority: "P2"
+      condition: |
+        rate(email_fallback_triggered_total[30m]) > 3
+      description: "Primary email service failing, fallback being used frequently"
+      notification_channels:
+        - slack_monitoring
+      runbook: "https://docs.example.com/runbooks/email-fallback"
+
+    - name: "WorkflowExecutionDurationHigh"
+      severity: "medium"
+      priority: "P2"
+      condition: |
+        histogram_quantile(0.95, workflow_execution_duration_seconds) > 120
+        for: 10m
+      description: "95th percentile execution time > 2 minutes"
+      notification_channels:
+        - slack_monitoring
+
+    - name: "ValidationErrorSpike"
+      severity: "medium"
+      priority: "P2"
+      condition: |
+        rate(workflow_errors_total{severity="low", stage="validate-input"}[30m]) > 10
+      description: "Many validation errors - possible UX issue"
+      notification_channels:
+        - slack_monitoring
+      actions:
+        - analyze_validation_errors
+        - consider_ux_improvements
+
+  # LOW PRIORITY ALERTS (P3 - Review in daily standup)
+  low:
+    - name: "UserRetryPattern"
+      severity: "low"
+      priority: "P3"
+      condition: |
+        count(workflow_errors_total{clientEmail="same_user@example.com"} > 3) by (clientEmail)
+        for: 5m
+      description: "Same user experiencing multiple errors - may need support"
+      notification_channels:
+        - slack_support
+      actions:
+        - proactive_support_outreach
+
+    - name: "UnusualErrorCode"
+      severity: "low"
+      priority: "P3"
+      condition: |
+        workflow_errors_total{error_code="UNKNOWN_ERROR"} > 0
+      description: "Unknown error code encountered - needs investigation"
+      notification_channels:
+        - slack_monitoring
+
+# ==============================================================================
+# DASHBOARDS
+# ==============================================================================
+
+dashboards:
+  # Main operational dashboard
+  - name: "Workflow Builder - Operations"
+    url: "https://grafana.example.com/d/workflow-builder-ops"
+    description: "Real-time operational metrics"
+    refresh: "1m"
+    panels:
+      - title: "Execution Rate"
+        type: "graph"
+        query: "rate(workflow_executions_total[5m])"
+
+      - title: "Success Rate"
+        type: "gauge"
+        query: "workflow_success_rate"
+        thresholds:
+          critical: 50
+          warning: 80
+          good: 95
+
+      - title: "Error Distribution"
+        type: "pie"
+        query: "sum by (error_code) (workflow_errors_total)"
+
+      - title: "Execution Duration (P95)"
+        type: "graph"
+        query: "histogram_quantile(0.95, workflow_execution_duration_seconds)"
+
+      - title: "Gemini API Status"
+        type: "stat"
+        query: "rate(gemini_api_requests_total{status_code=~'2..'}[5m])"
+
+      - title: "Email Delivery Status"
+        type: "stat"
+        query: "rate(email_sent_total{status='sent'}[5m])"
+
+      - title: "Recent Errors"
+        type: "table"
+        query: "workflow_errors_total"
+        columns: ["timestamp", "error_code", "stage", "severity", "client_email"]
+        limit: 20
+
+      - title: "Active Alerts"
+        type: "alert_list"
+        severity: ["critical", "high"]
+
+  # Error analysis dashboard
+  - name: "Workflow Builder - Error Analysis"
+    url: "https://grafana.example.com/d/workflow-builder-errors"
+    description: "Deep dive into errors and failures"
+    refresh: "5m"
+    panels:
+      - title: "Errors by Stage"
+        type: "bar"
+        query: "sum by (stage) (workflow_errors_total)"
+
+      - title: "Errors by Severity"
+        type: "bar"
+        query: "sum by (severity) (workflow_errors_total)"
+
+      - title: "Error Trends (24h)"
+        type: "graph"
+        query: "rate(workflow_errors_total[1h])"
+        timerange: "24h"
+
+      - title: "Most Common Error Codes"
+        type: "table"
+        query: "topk(10, sum by (error_code) (workflow_errors_total))"
+
+      - title: "Users with Most Errors"
+        type: "table"
+        query: "topk(10, sum by (client_email) (workflow_errors_total))"
+
+      - title: "API Error Details"
+        type: "graph"
+        query: "gemini_api_errors_total"
+        breakdown_by: "error_type"
+
+  # SLA tracking dashboard
+  - name: "Workflow Builder - SLA"
+    url: "https://grafana.example.com/d/workflow-builder-sla"
+    description: "SLA and performance tracking"
+    refresh: "5m"
+    panels:
+      - title: "Availability (30 days)"
+        type: "stat"
+        query: "(1 - (sum(workflow_errors_total{severity='critical'}) / sum(workflow_executions_total))) * 100"
+        timerange: "30d"
+        target: "99.9%"
+
+      - title: "MTTR (Mean Time To Recovery)"
+        type: "stat"
+        query: "avg(incident_recovery_time_seconds)"
+        timerange: "30d"
+
+      - title: "Error Rate by Day"
+        type: "heatmap"
+        query: "rate(workflow_errors_total[1h])"
+        timerange: "30d"
+
+# ==============================================================================
+# NOTIFICATION CHANNELS
+# ==============================================================================
+
+notification_channels:
+  # PagerDuty for critical alerts
+  pagerduty:
+    type: "pagerduty"
+    integration_key: "${PAGERDUTY_INTEGRATION_KEY}"
+    severity_mapping:
+      critical: "critical"
+      high: "error"
+    escalation_policy: "workflow-ops-oncall"
+
+  # Slack channels
+  slack_critical:
+    type: "slack"
+    webhook_url: "${SLACK_WEBHOOK_CRITICAL}"
+    channel: "#incidents"
+    username: "Workflow Monitor [CRITICAL]"
+    icon_emoji: ":rotating_light:"
+    mention: "@here"
+
+  slack_alerts:
+    type: "slack"
+    webhook_url: "${SLACK_WEBHOOK_ALERTS}"
+    channel: "#automation-alerts"
+    username: "Workflow Monitor"
+    icon_emoji: ":warning:"
+
+  slack_monitoring:
+    type: "slack"
+    webhook_url: "${SLACK_WEBHOOK_MONITORING}"
+    channel: "#automation-monitoring"
+    username: "Workflow Monitor"
+    icon_emoji: ":chart_with_upwards_trend:"
+
+  slack_support:
+    type: "slack"
+    webhook_url: "${SLACK_WEBHOOK_SUPPORT}"
+    channel: "#customer-support"
+    username: "Workflow Monitor"
+    icon_emoji: ":information_source:"
+
+  # Email notifications
+  email_oncall:
+    type: "email"
+    recipients: "${ONCALL_EMAIL_LIST}"
+    subject_prefix: "[CRITICAL]"
+
+  email_admin:
+    type: "email"
+    recipients: "${ADMIN_EMAIL}"
+    subject_prefix: "[WORKFLOW ALERT]"
+
+  email_team:
+    type: "email"
+    recipients: "${TEAM_EMAIL_LIST}"
+    subject_prefix: "[Workflow Monitoring]"
+
+  email_daily_digest:
+    type: "email"
+    recipients: "${TEAM_EMAIL_LIST}"
+    subject_prefix: "[Daily Digest]"
+    schedule: "daily"
+    time: "09:00"
+    timezone: "UTC"
+
+# ==============================================================================
+# SLA TARGETS
+# ==============================================================================
+
+sla_targets:
+  availability:
+    target: "99.5%"
+    measurement_window: "30d"
+    excludes:
+      - planned_maintenance
+      - external_api_downtime
+
+  success_rate:
+    target: "95%"
+    measurement_window: "24h"
+
+  response_time:
+    p50: "30s"
+    p95: "90s"
+    p99: "120s"
+
+  error_resolution:
+    critical: "15m"    # 15 minutes
+    high: "30m"        # 30 minutes
+    medium: "4h"       # 4 hours
+    low: "24h"         # 24 hours
+
+  mttr:  # Mean Time To Recovery
+    target: "30m"
+    measurement_window: "30d"
+
+# ==============================================================================
+# INCIDENT RESPONSE
+# ==============================================================================
+
+incident_response:
+  severity_definitions:
+    critical:
+      description: "Complete service outage or data loss risk"
+      response_time: "Immediate (< 5 minutes)"
+      escalation: "Page oncall engineer"
+      examples:
+        - "Workflow completely down"
+        - "Error handler failure"
+        - "Data corruption detected"
+
+    high:
+      description: "Major functionality impaired"
+      response_time: "< 30 minutes"
+      escalation: "Notify team lead"
+      examples:
+        - "API integration down"
+        - "High error rate"
+        - "Email delivery failures"
+
+    medium:
+      description: "Minor functionality impaired"
+      response_time: "< 4 hours"
+      escalation: "Create ticket for investigation"
+      examples:
+        - "Success rate decline"
+        - "Performance degradation"
+
+    low:
+      description: "Informational or minor issues"
+      response_time: "< 24 hours"
+      escalation: "Review in daily standup"
+      examples:
+        - "Validation error spike"
+        - "Single user experiencing issues"
+
+  escalation_policy:
+    level_1:
+      role: "Oncall Engineer"
+      response_time: "5 minutes"
+      notification: "PagerDuty"
+
+    level_2:
+      role: "Team Lead"
+      response_time: "15 minutes"
+      notification: "Phone + Slack"
+      escalate_after: "30 minutes of no response"
+
+    level_3:
+      role: "Engineering Manager"
+      response_time: "30 minutes"
+      notification: "Phone + Email"
+      escalate_after: "1 hour of no resolution"
+
+# ==============================================================================
+# RUNBOOKS
+# ==============================================================================
+
+runbooks:
+  - name: "Workflow Completely Down"
+    url: "https://docs.example.com/runbooks/workflow-down"
+    steps:
+      - "Check n8n instance health"
+      - "Verify workflow is activated"
+      - "Check credential validity (Gmail OAuth2)"
+      - "Test Gemini API connectivity"
+      - "Review recent execution logs"
+      - "Check for recent deployments"
+
+  - name: "Gemini API Issues"
+    url: "https://docs.example.com/runbooks/gemini-api-issues"
+    steps:
+      - "Check Gemini API status page"
+      - "Verify API key is valid"
+      - "Check rate limit quota"
+      - "Review API error codes"
+      - "Consider temporary rate limiting"
+
+  - name: "Email Delivery Failures"
+    url: "https://docs.example.com/runbooks/email-failures"
+    steps:
+      - "Check Gmail OAuth2 credential validity"
+      - "Verify SendGrid fallback is configured"
+      - "Check email service status pages"
+      - "Review recent permission changes"
+      - "Test with manual email send"
+
+# ==============================================================================
+# DEPLOYMENT
+# ==============================================================================
+
+deployment:
+  # How to deploy this monitoring configuration
+
+  prometheus:
+    scrape_config: |
+      - job_name: 'n8n-workflow-builder'
+        scrape_interval: 60s
+        static_configs:
+          - targets: ['n8n-instance:5678']
+        metrics_path: '/metrics'
+
+  grafana:
+    datasource: "prometheus"
+    dashboard_import:
+      - "dashboards/workflow-builder-ops.json"
+      - "dashboards/workflow-builder-errors.json"
+      - "dashboards/workflow-builder-sla.json"
+
+  alertmanager:
+    config_file: "alertmanager.yml"
+    rules_file: "alert_rules.yml"
+
+# ==============================================================================
+# MAINTENANCE WINDOWS
+# ==============================================================================
+
+maintenance_windows:
+  scheduled:
+    - name: "Weekly Maintenance"
+      day: "Sunday"
+      time: "02:00-04:00"
+      timezone: "UTC"
+      suppress_alerts: true
+
+  planned_downtime:
+    notification_advance: "24h"
+    channels: ["slack_monitoring", "email_team"]
+
+---
+# End of Monitoring and Alerting Configuration

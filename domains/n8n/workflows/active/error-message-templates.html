@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Error Message Templates - n8n Workflow Builder</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .template-section {
+      background: white;
+      margin: 20px 0;
+      padding: 25px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .template-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 30px;
+    }
+    h1 { margin: 0 0 10px 0; }
+    h2 { color: #667eea; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
+    h3 { color: #764ba2; margin-top: 25px; }
+    .preview {
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 15px 0;
+      background: #fafafa;
+    }
+    .code-block {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 15px;
+      border-radius: 5px;
+      overflow-x: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      margin: 15px 0;
+    }
+    .severity-badge {
+      display: inline-block;
+      padding: 5px 12px;
+      border-radius: 5px;
+      font-weight: bold;
+      margin: 5px 5px 5px 0;
+      font-size: 12px;
+    }
+    .severity-low { background: #d4edda; color: #155724; }
+    .severity-medium { background: #fff3cd; color: #856404; }
+    .severity-high { background: #f8d7da; color: #721c24; }
+    .severity-critical { background: #d32f2f; color: white; }
+    .usage-note {
+      background: #e7f3ff;
+      border-left: 4px solid #2196f3;
+      padding: 15px;
+      margin: 15px 0;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="template-header">
+    <h1>Error Message Templates</h1>
+    <p>Production-grade user-friendly error messages for n8n Workflow Builder</p>
+  </div>
+
+  <!-- TEMPLATE 1: VALIDATION ERROR -->
+  <div class="template-section">
+    <h2>1. Validation Error Template</h2>
+    <span class="severity-badge severity-low">Severity: LOW</span>
+
+    <h3>Use Case</h3>
+    <p>User input validation failures (missing fields, invalid format, etc.)</p>
+
+    <h3>Preview</h3>
+    <div class="preview">
+      <div style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); color: white; padding: 20px; border-radius: 10px;">
+        <h2 style="margin: 0 0 10px 0; color: white;">⚠️ Input Validation Issue</h2>
+        <p style="margin: 0;">We found an issue with your submission.</p>
+      </div>
+
+      <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px;">
+        <h3 style="margin-top: 0; color: #333;">What's Wrong?</h3>
+        <p>Your workflow description is too short. Please provide at least 10 characters describing what you want your workflow to do.</p>
+      </div>
+
+      <h3 style="color: #333;">✏️ How to Fix This</h3>
+      <ol>
+        <li>Provide a clear description of your workflow (minimum 10 characters)</li>
+        <li>Include details about what triggers the workflow</li>
+        <li>Specify what actions should be performed</li>
+        <li>Submit your request again</li>
+      </ol>
+    </div>
+
+    <h3>HTML Code</h3>
+    <div class="code-block">
+&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+  &lt;style&gt;
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); color: white; padding: 20px; border-radius: 10px; }
+    .error-box { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px; }
+  &lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;div class="header"&gt;
+    &lt;h2&gt;⚠️ Input Validation Issue&lt;/h2&gt;
+    &lt;p&gt;We found an issue with your submission.&lt;/p&gt;
+  &lt;/div&gt;
+
+  &lt;div class="error-box"&gt;
+    &lt;h3&gt;What's Wrong?&lt;/h3&gt;
+    &lt;p&gt;{{ ERROR_MESSAGE }}&lt;/p&gt;
+  &lt;/div&gt;
+
+  &lt;h3&gt;✏️ How to Fix This&lt;/h3&gt;
+  &lt;ol&gt;
+    &lt;li&gt;{{ FIX_STEP_1 }}&lt;/li&gt;
+    &lt;li&gt;{{ FIX_STEP_2 }}&lt;/li&gt;
+    &lt;li&gt;Submit your request again&lt;/li&gt;
+  &lt;/ol&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+    </div>
+  </div>
+
+  <!-- TEMPLATE 2: API ERROR -->
+  <div class="template-section">
+    <h2>2. API Service Error Template</h2>
+    <span class="severity-badge severity-high">Severity: HIGH</span>
+
+    <h3>Use Case</h3>
+    <p>When external API services (Gemini, etc.) are unavailable or returning errors</p>
+
+    <h3>Preview</h3>
+    <div class="preview">
+      <div style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); color: white; padding: 30px; border-radius: 10px;">
+        <h1 style="margin: 0 0 10px 0; color: white;">⚠️ Service Temporarily Unavailable</h1>
+        <p style="margin: 0;">We're experiencing a temporary issue with our AI service.</p>
+      </div>
+
+      <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px;">
+        <h3 style="margin-top: 0; color: #333;">What Happened?</h3>
+        <p>Our AI workflow architect service is temporarily unavailable. We're working to resolve this.</p>
+      </div>
+
+      <div style="background: #e7f3ff; border-left: 4px solid #2196f3; padding: 15px; margin: 20px 0; border-radius: 5px;">
+        <h3 style="margin-top: 0; color: #333;">🛠️ What You Can Do</h3>
+        <ul>
+          <li><strong>Wait a Few Minutes:</strong> This is usually a temporary issue that resolves quickly.</li>
+          <li><strong>Try Again:</strong> Please try submitting your request again in 2-3 minutes.</li>
+          <li><strong>Still Having Issues?:</strong> If the problem persists after 10 minutes, please contact support with error code: <code style="background: #f4f4f4; padding: 2px 6px; border-radius: 3px;">ARCHITECT_API_ERROR</code></li>
+        </ul>
+      </div>
+
+      <p style="color: #666; font-size: 14px; margin-top: 30px; text-align: center;">Your request has been saved. No need to rewrite everything!</p>
+    </div>
+
+    <h3>HTML Code</h3>
+    <div class="code-block">
+&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+  &lt;style&gt;
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); color: white; padding: 30px; border-radius: 10px; }
+    .error-box { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px; }
+    .support-box { background: #e7f3ff; border-left: 4px solid #2196f3; padding: 15px; margin: 20px 0; border-radius: 5px; }
+    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }
+  &lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;div class="header"&gt;
+    &lt;h1&gt;⚠️ Service Temporarily Unavailable&lt;/h1&gt;
+    &lt;p&gt;We're experiencing a temporary issue with our AI service.&lt;/p&gt;
+  &lt;/div&gt;
+
+  &lt;div class="error-box"&gt;
+    &lt;h3&gt;What Happened?&lt;/h3&gt;
+    &lt;p&gt;{{ SERVICE_ERROR_MESSAGE }}&lt;/p&gt;
+  &lt;/div&gt;
+
+  &lt;div class="support-box"&gt;
+    &lt;h3&gt;🛠️ What You Can Do&lt;/h3&gt;
+    &lt;ul&gt;
+      &lt;li&gt;&lt;strong&gt;Wait a Few Minutes:&lt;/strong&gt; This is usually a temporary issue.&lt;/li&gt;
+      &lt;li&gt;&lt;strong&gt;Try Again:&lt;/strong&gt; Please try in 2-3 minutes.&lt;/li&gt;
+      &lt;li&gt;&lt;strong&gt;Still Having Issues?:&lt;/strong&gt; Contact support with error code: &lt;code&gt;{{ ERROR_CODE }}&lt;/code&gt;&lt;/li&gt;
+    &lt;/ul&gt;
+  &lt;/div&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+    </div>
+  </div>
+
+  <!-- TEMPLATE 3: CRITICAL SYSTEM ERROR -->
+  <div class="template-section">
+    <h2>3. Critical System Error Template (Admin)</h2>
+    <span class="severity-badge severity-critical">Severity: CRITICAL</span>
+
+    <h3>Use Case</h3>
+    <p>Critical errors requiring immediate admin attention</p>
+
+    <h3>Preview</h3>
+    <div class="preview">
+      <div style="background: linear-gradient(135deg, #d32f2f 0%, #c62828 100%); color: white; padding: 30px; border-radius: 10px;">
+        <h1 style="margin: 0 0 10px 0; color: white;">🚨 Critical Error Alert</h1>
+        <p style="margin: 0; font-size: 18px;">Severity: CRITICAL</p>
+      </div>
+
+      <div style="background: #ffebee; border-left: 4px solid #d32f2f; padding: 15px; margin: 20px 0; border-radius: 5px;">
+        <h3 style="margin-top: 0; color: #333;">Error Summary</h3>
+        <p><strong>Error Code:</strong> <code style="background: #f4f4f4; padding: 2px 6px; border-radius: 3px;">ERROR_HANDLER_FAILURE</code></p>
+        <p><strong>Stage:</strong> error-handler</p>
+        <p><strong>Execution ID:</strong> <code style="background: #f4f4f4; padding: 2px 6px; border-radius: 3px;">abc123xyz</code></p>
+      </div>
+
+      <div style="background: #fff3e0; border-left: 4px solid #ff9800; padding: 15px; margin: 20px 0; border-radius: 5px;">
+        <h3 style="margin-top: 0; color: #333;">⚡ Action Required</h3>
+        <ul>
+          <li>Investigate execution immediately</li>
+          <li>Check system logs for context</li>
+          <li>Verify all API integrations</li>
+          <li>Contact affected user</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>HTML Code</h3>
+    <div class="code-block">
+&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+  &lt;style&gt;
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #d32f2f 0%, #c62828 100%); color: white; padding: 30px; border-radius: 10px; }
+    .critical { background: #ffebee; border-left: 4px solid #d32f2f; padding: 15px; margin: 20px 0; border-radius: 5px; }
+    .action-required { background: #fff3e0; border-left: 4px solid #ff9800; padding: 15px; margin: 20px 0; border-radius: 5px; }
+    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }
+  &lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;div class="header"&gt;
+    &lt;h1&gt;🚨 Critical Error Alert&lt;/h1&gt;
+    &lt;p&gt;Severity: {{ SEVERITY }}&lt;/p&gt;
+  &lt;/div&gt;
+
+  &lt;div class="critical"&gt;
+    &lt;h3&gt;Error Summary&lt;/h3&gt;
+    &lt;p&gt;&lt;strong&gt;Error Code:&lt;/strong&gt; &lt;code&gt;{{ ERROR_CODE }}&lt;/code&gt;&lt;/p&gt;
+    &lt;p&gt;&lt;strong&gt;Stage:&lt;/strong&gt; {{ STAGE }}&lt;/p&gt;
+    &lt;p&gt;&lt;strong&gt;Execution ID:&lt;/strong&gt; &lt;code&gt;{{ EXECUTION_ID }}&lt;/code&gt;&lt;/p&gt;
+  &lt;/div&gt;
+
+  &lt;div class="action-required"&gt;
+    &lt;h3&gt;⚡ Action Required&lt;/h3&gt;
+    &lt;ul&gt;
+      &lt;li&gt;Investigate execution: &lt;code&gt;{{ EXECUTION_ID }}&lt;/code&gt;&lt;/li&gt;
+      &lt;li&gt;Check system logs&lt;/li&gt;
+      &lt;li&gt;Verify API integrations&lt;/li&gt;
+      &lt;li&gt;Contact user: {{ USER_EMAIL }}&lt;/li&gt;
+    &lt;/ul&gt;
+  &lt;/div&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+    </div>
+  </div>
+
+  <!-- TEMPLATE 4: SUCCESS WITH WARNINGS -->
+  <div class="template-section">
+    <h2>4. Success with Warnings Template</h2>
+    <span class="severity-badge severity-medium">Severity: MEDIUM</span>
+
+    <h3>Use Case</h3>
+    <p>Workflow generated successfully but with validation warnings</p>
+
+    <h3>Preview</h3>
+    <div class="preview">
+      <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px;">
+        <h1 style="margin: 0 0 10px 0; color: white;">✅ Your Workflow is Ready!</h1>
+        <p style="margin: 0;">With some recommendations for improvement</p>
+      </div>
+
+      <div style="background: #d4edda; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #28a745;">
+        <h3 style="margin-top: 0; color: #333;">✓ Successfully Generated</h3>
+        <p>Your workflow has been created with 5 nodes and is ready to import.</p>
+      </div>
+
+      <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px;">
+        <h3 style="margin-top: 0; color: #333;">⚠️ Please Review</h3>
+        <p><strong>Validation Warnings:</strong></p>
+        <ul>
+          <li>Some credentials need to be configured after import</li>
+          <li>Consider adding error handling to HTTP Request nodes</li>
+        </ul>
+      </div>
+
+      <div style="background: #e7f3ff; border-left: 4px solid #2196f3; padding: 15px; margin: 20px 0; border-radius: 5px;">
+        <h3 style="margin-top: 0; color: #333;">📋 Before You Import</h3>
+        <ol>
+          <li>Review the workflow JSON below</li>
+          <li>Ensure you have the required credentials configured</li>
+          <li>Test the workflow with sample data</li>
+          <li>Add any additional error handling as needed</li>
+        </ol>
+      </div>
+    </div>
+
+    <h3>HTML Code</h3>
+    <div class="code-block">
+&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+  &lt;style&gt;
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px; }
+    .success-box { background: #d4edda; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #28a745; }
+    .warning-box { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px; }
+    .info-box { background: #e7f3ff; border-left: 4px solid #2196f3; padding: 15px; margin: 20px 0; border-radius: 5px; }
+  &lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;div class="header"&gt;
+    &lt;h1&gt;✅ Your Workflow is Ready!&lt;/h1&gt;
+    &lt;p&gt;With some recommendations for improvement&lt;/p&gt;
+  &lt;/div&gt;
+
+  &lt;div class="success-box"&gt;
+    &lt;h3&gt;✓ Successfully Generated&lt;/h3&gt;
+    &lt;p&gt;{{ SUCCESS_MESSAGE }}&lt;/p&gt;
+  &lt;/div&gt;
+
+  &lt;div class="warning-box"&gt;
+    &lt;h3&gt;⚠️ Please Review&lt;/h3&gt;
+    &lt;p&gt;&lt;strong&gt;Validation Warnings:&lt;/strong&gt;&lt;/p&gt;
+    &lt;ul&gt;
+      {{ WARNING_LIST }}
+    &lt;/ul&gt;
+  &lt;/div&gt;
+
+  &lt;div class="info-box"&gt;
+    &lt;h3&gt;📋 Before You Import&lt;/h3&gt;
+    &lt;ol&gt;
+      &lt;li&gt;Review the workflow JSON&lt;/li&gt;
+      &lt;li&gt;Configure required credentials&lt;/li&gt;
+      &lt;li&gt;Test with sample data&lt;/li&gt;
+    &lt;/ol&gt;
+  &lt;/div&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+    </div>
+  </div>
+
+  <!-- USAGE GUIDE -->
+  <div class="template-section">
+    <h2>📘 Implementation Guide</h2>
+
+    <div class="usage-note">
+      <h3>How to Use These Templates</h3>
+      <ol>
+        <li><strong>Copy the HTML code</strong> from the template you need</li>
+        <li><strong>Replace placeholders</strong> (marked with {{ }}) with actual values from your error data</li>
+        <li><strong>Use in n8n Code nodes</strong> or HTML email composition nodes</li>
+        <li><strong>Test thoroughly</strong> with different error scenarios</li>
+      </ol>
+    </div>
+
+    <h3>Placeholder Reference</h3>
+    <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+      <thead>
+        <tr style="background: #f0f0f0;">
+          <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">Placeholder</th>
+          <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">Description</th>
+          <th style="padding: 12px; text-align: left; border: 1px solid #ddd;">Example Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding: 12px; border: 1px solid #ddd;"><code>{{ ERROR_MESSAGE }}</code></td>
+          <td style="padding: 12px; border: 1px solid #ddd;">User-friendly error description</td>
+          <td style="padding: 12px; border: 1px solid #ddd;">Your email must be valid</td>
+        </tr>
+        <tr>
+          <td style="padding: 12px; border: 1px solid #ddd;"><code>{{ ERROR_CODE }}</code></td>
+          <td style="padding: 12px; border: 1px solid #ddd;">Technical error code</td>
+          <td style="padding: 12px; border: 1px solid #ddd;">INVALID_EMAIL</td>
+        </tr>
+        <tr>
+          <td style="padding: 12px; border: 1px solid #ddd;"><code>{{ EXECUTION_ID }}</code></td>
+          <td style="padding: 12px; border: 1px solid #ddd;">n8n execution identifier</td>
+          <td style="padding: 12px; border: 1px solid #ddd;">abc123xyz789</td>
+        </tr>
+        <tr>
+          <td style="padding: 12px; border: 1px solid #ddd;"><code>{{ STAGE }}</code></td>
+          <td style="padding: 12px; border: 1px solid #ddd;">Pipeline stage where error occurred</td>
+          <td style="padding: 12px; border: 1px solid #ddd;">architect</td>
+        </tr>
+        <tr>
+          <td style="padding: 12px; border: 1px solid #ddd;"><code>{{ SEVERITY }}</code></td>
+          <td style="padding: 12px; border: 1px solid #ddd;">Error severity level</td>
+          <td style="padding: 12px; border: 1px solid #ddd;">HIGH</td>
+        </tr>
+        <tr>
+          <td style="padding: 12px; border: 1px solid #ddd;"><code>{{ USER_EMAIL }}</code></td>
+          <td style="padding: 12px; border: 1px solid #ddd;">User's email address</td>
+          <td style="padding: 12px; border: 1px solid #ddd;">user@example.com</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Best Practices</h3>
+    <ul>
+      <li><strong>Always include:</strong> Clear error description, actionable steps, support contact</li>
+      <li><strong>Use appropriate severity:</strong> Match visual styling to error severity</li>
+      <li><strong>Be empathetic:</strong> Acknowledge user frustration, offer solutions</li>
+      <li><strong>Provide context:</strong> Include execution ID and timestamp for debugging</li>
+      <li><strong>Test rendering:</strong> Verify templates work across email clients</li>
+    </ul>
+  </div>
+
+  <div style="background: #f0f0f0; padding: 20px; border-radius: 10px; text-align: center; margin-top: 40px;">
+    <p style="color: #666; margin: 0;">Error Message Templates v1.0 | Production-Grade n8n Workflow Builder</p>
+  </div>
+</body>
+</html>

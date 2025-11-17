@@ -1,0 +1,92 @@
+{
+  "name": "n8n Workflow Builder v3.0 - Minimal",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "workflow-builder-minimal",
+        "formTitle": "Quick Workflow Builder",
+        "formDescription": "Lightweight version for rapid prototyping",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Workflow Description",
+              "fieldType": "textarea",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Email",
+              "fieldType": "email",
+              "requiredField": true
+            }
+          ]
+        },
+        "responseMode": "onReceived"
+      },
+      "id": "trigger",
+      "name": "Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const input = items[0].json;\nreturn [{json: {\n  brief: input['Workflow Description'],\n  email: input['Email'],\n  timestamp: Date.now()\n}}];"
+      },
+      "id": "process",
+      "name": "Process",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "{{$env.GENERATOR_URL}}",
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{JSON.stringify($json)}}"
+      },
+      "id": "generate",
+      "name": "Generate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "response",
+              "value": "={{$json}}"
+            }
+          ]
+        }
+      },
+      "id": "output",
+      "name": "Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [850, 300]
+    }
+  ],
+  "connections": {
+    "Form": {
+      "main": [[{"node": "Process", "type": "main", "index": 0}]]
+    },
+    "Process": {
+      "main": [[{"node": "Generate", "type": "main", "index": 0}]]
+    },
+    "Generate": {
+      "main": [[{"node": "Output", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 60
+  },
+  "id": "workflow-builder-minimal",
+  "version": "3.0.0-minimal"
+}

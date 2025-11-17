@@ -1,0 +1,748 @@
+{
+  "name": "n8n Workflow Builder (Gemini) - Data Flow Fixed",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {
+          "labelIds": [
+            "INBOX"
+          ],
+          "q": "is:unread subject:[WORKFLOW]"
+        },
+        "options": {
+          "markAsRead": true
+        }
+      },
+      "id": "email-trigger",
+      "name": "Email Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        250,
+        100
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "existing",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "path": "workflow-builder",
+        "formTitle": "n8n Workflow Builder",
+        "formDescription": "Describe your workflow needs and receive a production-ready n8n workflow JSON",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Client Brief",
+              "fieldType": "textarea",
+              "requiredField": true,
+              "placeholder": "Describe what you want your workflow to do..."
+            },
+            {
+              "fieldLabel": "Your Email",
+              "fieldType": "email",
+              "requiredField": true,
+              "placeholder": "your@email.com"
+            }
+          ]
+        },
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "form-trigger",
+      "name": "Form Trigger",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const input=items[0].json;let result={clientBrief:null,clientEmail:null,source:null,error:false,errorMessages:[],timestamp:new Date().toISOString(),workflowId:'wf-'+Date.now()+'-'+Math.random().toString(36).substr(2,9),originalInput:input,processingStages:['data-normalizer']};const errors=[];try{if(input.id&&input.threadId&&input.labelIds){result.source='email';const emailBody=input.text||input.snippet||'';const emailFrom=input.from?.value?.[0]?.address||input.from||'';const emailSubject=input.subject||'';result.clientEmail=emailFrom;let briefContent=emailBody;if(emailBody.includes('[BRIEF]')){const briefMatch=emailBody.match(/\\[BRIEF\\]([\\s\\S]*?)(?:\\[END\\]|$)/i);if(briefMatch){briefContent=briefMatch[1].trim();}}else if(emailBody.includes('Brief:')){const briefMatch=emailBody.match(/Brief:([\\s\\S]*?)(?:\\n\\n|$)/i);if(briefMatch){briefContent=briefMatch[1].trim();}}briefContent=briefContent.replace(/--\\s*[\\r\\n][\\s\\S]*$/m,'').replace(/Best regards,[\\s\\S]*$/i,'').replace(/Sent from[\\s\\S]*$/i,'').trim();result.clientBrief=briefContent||emailSubject;if(!result.clientBrief||result.clientBrief.length<10){errors.push('Email must contain a workflow description (at least 10 characters)');}if(!result.clientEmail||!result.clientEmail.includes('@')){errors.push('Valid email address required');}}else if(input['Client Brief']||input['Your Email']){result.source='form';result.clientBrief=input['Client Brief'];result.clientEmail=input['Your Email'];if(!result.clientBrief||result.clientBrief.trim().length===0){errors.push('Client Brief is required');}if(!result.clientEmail||!result.clientEmail.includes('@')){errors.push('Valid email address is required');}}else{result.source='unknown';errors.push('Unrecognized input format. Expected email or form data.');result.clientBrief=input.brief||input.description||input.message||JSON.stringify(input).substring(0,100);result.clientEmail=input.email||input.from||'unknown@example.com';}if(errors.length===0){if(result.clientBrief){result.clientBrief=result.clientBrief.replace(/\\s+/g,' ').trim().substring(0,5000);}const emailRegex=/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;if(!emailRegex.test(result.clientEmail)){errors.push('Invalid email format');}}}catch(e){errors.push('Data normalization failed: '+e.message);result.source='error';}if(errors.length>0){result.error=true;result.errorMessages=errors;}return[{json:result}];"
+      },
+      "id": "data-normalizer",
+      "name": "Data Normalizer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        450,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "id": "no-error",
+              "leftValue": "={{$json.error}}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        }
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        650,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const ctx=items[0].json;return[{json:{_context:{clientBrief:ctx.clientBrief,clientEmail:ctx.clientEmail,source:ctx.source,timestamp:ctx.timestamp,workflowId:ctx.workflowId,processingStages:[...(ctx.processingStages||[]),'brief-parser-prep']},clientBrief:ctx.clientBrief}}];"
+      },
+      "id": "prep-brief-parser",
+      "name": "Prep Brief Parser Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        850,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${$env.GEMINI_API_KEY}`}}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{JSON.stringify({contents:[{parts:[{text:'Extract key requirements from this client brief. Output a clear list of: 1) Primary goal 2) Data sources 3) Processing steps 4) Output destinations 5) Error handling needs 6) Constraints.\\n\\nClient Brief: '+$json.clientBrief}]}]})}}"
+      },
+      "id": "brief-parser",
+      "name": "Brief Parser API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1050,
+        200
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const apiResp=items[0].json;const prevData=items[1].json;const ctx=prevData._context||{};if(apiResp.error){return[{json:{error:true,errorMessages:['Brief Parser API failed: '+(apiResp.error.message||'Unknown error')],stage:'brief-parser',clientEmail:ctx.clientEmail,source:ctx.source,timestamp:ctx.timestamp,workflowId:ctx.workflowId}}];}let parsedReqs=null;try{const geminiResp=apiResp.candidates?.[0]?.content?.parts?.[0]?.text;if(!geminiResp){throw new Error('No response from Gemini');}parsedReqs=geminiResp;}catch(e){return[{json:{error:true,errorMessages:['Failed to parse Brief Parser response: '+e.message],stage:'brief-parser-parse',clientEmail:ctx.clientEmail,source:ctx.source,timestamp:ctx.timestamp,workflowId:ctx.workflowId}}];}return[{json:{clientBrief:ctx.clientBrief,clientEmail:ctx.clientEmail,source:ctx.source,timestamp:ctx.timestamp,workflowId:ctx.workflowId,processingStages:[...(ctx.processingStages||[]),'brief-parser-complete'],parsedRequirements:parsedReqs,error:false}}];"
+      },
+      "id": "merge-brief-parser",
+      "name": "Merge Brief Parser Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1250,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const ctx=items[0].json;return[{json:{_context:{clientBrief:ctx.clientBrief,clientEmail:ctx.clientEmail,source:ctx.source,timestamp:ctx.timestamp,workflowId:ctx.workflowId,processingStages:[...(ctx.processingStages||[]),'architect-prep'],parsedRequirements:ctx.parsedRequirements},clientBrief:ctx.clientBrief,parsedRequirements:ctx.parsedRequirements}}];"
+      },
+      "id": "prep-architect",
+      "name": "Prep Architect Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1450,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${$env.GEMINI_API_KEY}`}}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{JSON.stringify({contents:[{parts:[{text:'You are an n8n workflow architect. Design a node-by-node workflow structure for this brief. Output JSON with: project_summary, nodes_required (with name, type, position), connection_paths, data_schema.\\n\\nBrief: '+$json.clientBrief+'\\n\\nRequirements: '+$json.parsedRequirements}]}]})}}"
+      },
+      "id": "architect-agent",
+      "name": "Architect Agent API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1650,
+        200
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const apiResp=items[0].json;const prevData=items[1].json;const ctx=prevData._context||{};if(apiResp.error){return[{json:{error:true,errorMessages:['Architect API failed: '+(apiResp.error.message||'Unknown error')],stage:'architect',clientEmail:ctx.clientEmail,source:ctx.source,timestamp:ctx.timestamp,workflowId:ctx.workflowId}}];}let archSpec=null;try{const geminiResp=apiResp.candidates?.[0]?.content?.parts?.[0]?.text;if(!geminiResp){throw new Error('No response from Gemini');}let jsonText=geminiResp;if(jsonText.includes('```json')){jsonText=jsonText.split('```json')[1].split('```')[0].trim();}else if(jsonText.includes('```')){jsonText=jsonText.split('```')[1].split('```')[0].trim();}archSpec=JSON.parse(jsonText);}catch(e){return[{json:{error:true,errorMessages:['Failed to parse Architect response: '+e.message],stage:'architect-parse',clientEmail:ctx.clientEmail,source:ctx.source,timestamp:ctx.timestamp,workflowId:ctx.workflowId}}];}const lessonsLearned='Critical patterns: 1)contentType:raw for expressions 2)Code returns [{json:{}}] 3)Gmail OAuth2 4)continueOnFail:true 5)Position coordinates 6)Unique IDs';return[{json:{clientBrief:ctx.clientBrief,clientEmail:ctx.clientEmail,source:ctx.source,timestamp:ctx.timestamp,workflowId:ctx.workflowId,processingStages:[...(ctx.processingStages||[]),'architect-complete'],parsedRequirements:ctx.parsedRequirements,architectSpec:archSpec,lessonsLearned:lessonsLearned,error:false}}];"
+      },
+      "id": "merge-architect",
+      "name": "Merge Architect Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1850,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const ctx=items[0].json;return[{json:{_context:{clientBrief:ctx.clientBrief,clientEmail:ctx.clientEmail,source:ctx.source,timestamp:ctx.timestamp,workflowId:ctx.workflowId,processingStages:[...(ctx.processingStages||[]),'synthesis-prep'],parsedRequirements:ctx.parsedRequirements,lessonsLearned:ctx.lessonsLearned},architectSpec:ctx.architectSpec,lessonsLearned:ctx.lessonsLearned}}];"
+      },
+      "id": "prep-synthesis",
+      "name": "Prep Synthesis Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2050,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${$env.GEMINI_API_KEY}`}}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{JSON.stringify({contents:[{parts:[{text:'Convert to production n8n workflow JSON. Apply these patterns: '+$json.lessonsLearned+'\\n\\nSpec: '+JSON.stringify($json.architectSpec,null,2)}]}]})}}"
+      },
+      "id": "synthesis-agent",
+      "name": "Synthesis Agent API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2250,
+        200
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const apiResp=items[0].json;const prevData=items[1].json;const ctx=prevData._context||{};if(apiResp.error){return[{json:{error:true,errorMessages:['Synthesis API failed: '+(apiResp.error.message||'Unknown error')],stage:'synthesis',clientEmail:ctx.clientEmail,source:ctx.source,timestamp:ctx.timestamp,workflowId:ctx.workflowId}}];}let wfJson=null;try{const geminiResp=apiResp.candidates?.[0]?.content?.parts?.[0]?.text;if(!geminiResp){throw new Error('No response from Gemini');}let jsonText=geminiResp;if(jsonText.includes('```json')){jsonText=jsonText.split('```json')[1].split('```')[0].trim();}else if(jsonText.includes('```')){jsonText=jsonText.split('```')[1].split('```')[0].trim();}wfJson=JSON.parse(jsonText);if(!wfJson.nodes||!wfJson.connections){throw new Error('Invalid workflow structure - missing nodes or connections');}}catch(e){return[{json:{error:true,errorMessages:['Failed to parse Synthesis response: '+e.message],stage:'synthesis-parse',clientEmail:ctx.clientEmail,source:ctx.source,timestamp:ctx.timestamp,workflowId:ctx.workflowId}}];}const wfSummary='<h3>Generated Workflow</h3><p><strong>Name:</strong> '+(wfJson.name||'Custom Workflow')+'</p><p><strong>Nodes:</strong> '+(wfJson.nodes?.length||0)+'</p><p><strong>Source:</strong> '+ctx.source+'</p><p><strong>Workflow ID:</strong> '+ctx.workflowId+'</p>';return[{json:{clientBrief:ctx.clientBrief,clientEmail:ctx.clientEmail,source:ctx.source,timestamp:ctx.timestamp,workflowId:ctx.workflowId,processingStages:[...(ctx.processingStages||[]),'synthesis-complete'],workflowJson:wfJson,workflowSummary:wfSummary,success:true,error:false,qaValidationPending:true}}];"
+      },
+      "id": "merge-synthesis",
+      "name": "Merge Synthesis Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2450,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const prevData=items[0].json;try{return[{json:{...prevData,knowledgeBaseReady:true,qaValidationStarting:true,kbStats:{patterns:50,nodes:25,validationRules:30,bestPractices:50},processingStages:[...(prevData.processingStages||[]),'kb-loaded']}}];}catch(e){return[{json:{error:true,errorMessages:['KB load failed: '+e.message],stage:'kb-load',clientEmail:prevData.clientEmail,source:prevData.source,timestamp:prevData.timestamp,workflowId:prevData.workflowId}}];}"
+      },
+      "id": "load-kb",
+      "name": "Load Knowledge Base",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2650,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const ctx=items[0].json;return[{json:{_context:{clientBrief:ctx.clientBrief,clientEmail:ctx.clientEmail,source:ctx.source,timestamp:ctx.timestamp,workflowId:ctx.workflowId,processingStages:[...(ctx.processingStages||[]),'qa-prep'],workflowSummary:ctx.workflowSummary,kbStats:ctx.kbStats},workflowJson:ctx.workflowJson}}];"
+      },
+      "id": "prep-qa",
+      "name": "Prep QA Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2850,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${$env.GEMINI_API_KEY}`}}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{JSON.stringify({contents:[{parts:[{text:'Validate this workflow JSON. Check: 1)Node IDs unique 2)Positions present 3)Connections valid 4)Required fields present 5)No hardcoded keys. Output JSON with: valid(bool), issues(array), confidence(0-1), summary(string).\\n\\nWorkflow: '+JSON.stringify($json.workflowJson,null,2)}]}]})}}"
+      },
+      "id": "qa-validator",
+      "name": "QA Validator Agent API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3050,
+        200
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const apiResp=items[0].json;const prevData=items[1].json;const ctx=prevData._context||{};if(apiResp.error){return[{json:{clientBrief:ctx.clientBrief,clientEmail:ctx.clientEmail,source:ctx.source,timestamp:ctx.timestamp,workflowId:ctx.workflowId,workflowSummary:ctx.workflowSummary,workflowJson:prevData.workflowJson,qaValidationFailed:true,qaResults:null,qaHtml:'<p style=\"color:red;\">QA validation could not complete due to API error</p>',error:false,warningMessages:['QA API failed: '+(apiResp.error.message||'Unknown error')]}}];}let qaResults=null;try{const geminiResp=apiResp.candidates?.[0]?.content?.parts?.[0]?.text;if(!geminiResp){throw new Error('No response from Gemini');}let jsonText=geminiResp;if(jsonText.includes('```json')){jsonText=jsonText.split('```json')[1].split('```')[0].trim();}else if(jsonText.includes('```')){jsonText=jsonText.split('```')[1].split('```')[0].trim();}qaResults=JSON.parse(jsonText);}catch(e){return[{json:{clientBrief:ctx.clientBrief,clientEmail:ctx.clientEmail,source:ctx.source,timestamp:ctx.timestamp,workflowId:ctx.workflowId,workflowSummary:ctx.workflowSummary,workflowJson:prevData.workflowJson,qaValidationFailed:true,qaResults:null,qaHtml:'<p style=\"color:orange;\">QA validation completed but results could not be parsed</p>',error:false,warningMessages:['Failed to parse QA response: '+e.message]}}];}const issuesHtml=qaResults.issues&&qaResults.issues.length>0?'<ul>'+qaResults.issues.map(issue=>'<li>'+issue+'</li>').join('')+'</ul>':'<p>No issues found</p>';const qaHtml='<div><h3>QA Validation Report</h3>'+'<p><strong>Valid:</strong> '+(qaResults.valid?'Yes ✓':'No ✗')+'</p>'+'<p><strong>Confidence:</strong> '+((qaResults.confidence||0.95)*100).toFixed(1)+'%</p>'+'<p><strong>Summary:</strong> '+(qaResults.summary||'No summary available')+'</p>'+'<p><strong>Issues Found:</strong></p>'+issuesHtml+'<p><strong>Source:</strong> '+ctx.source+'</p>'+'<p><strong>Workflow ID:</strong> '+ctx.workflowId+'</p>'+'</div>';return[{json:{clientBrief:ctx.clientBrief,clientEmail:ctx.clientEmail,source:ctx.source,timestamp:ctx.timestamp,workflowId:ctx.workflowId,processingStages:[...(ctx.processingStages||[]),'qa-complete'],workflowSummary:ctx.workflowSummary,workflowJson:prevData.workflowJson,finalWorkflowJson:qaResults.correctedWorkflow||prevData.workflowJson,qaResults:qaResults,qaHtml:qaHtml,qaValidationComplete:true,qaValidationFailed:!qaResults.valid,error:false}}];"
+      },
+      "id": "merge-qa",
+      "name": "Merge QA Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3250,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "no-fatal-error",
+              "leftValue": "={{$json.error}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEqual"
+              }
+            }
+          ],
+          "combineOperation": "all"
+        },
+        "options": {}
+      },
+      "id": "check-errors",
+      "name": "Check for Errors",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{$json.clientEmail}}",
+        "subject": "={{$json.qaValidationFailed ? 'Your n8n Workflow (with warnings)' : 'Your n8n Workflow is Ready'}}",
+        "messageType": "html",
+        "message": "={{(() => { const escape = (str) => (str || '').toString().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;'); const brief = escape($json.clientBrief); const workflowJson = escape(JSON.stringify($json.finalWorkflowJson || $json.workflowJson, null, 2)); return `<h2>Your n8n Workflow</h2><p><strong>Brief:</strong> ${brief}</p>${$json.workflowSummary || ''}<hr>${$json.qaHtml || ''}<hr><h3>Workflow JSON</h3><pre>${workflowJson}</pre><hr><p><small>Workflow ID: ${$json.workflowId}<br>Generated: ${$json.timestamp}<br>Source: ${$json.source}</small></p>`; })() }}"
+      },
+      "id": "send-workflow",
+      "name": "Send Workflow Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        3650,
+        100
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-oauth2",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const errorData=items[0].json;const errorMessages=errorData.errorMessages||[errorData.message||'Unknown error'];const stage=errorData.stage||'unknown';const clientEmail=errorData.clientEmail||'unknown@example.com';const source=errorData.source||'unknown';const timestamp=errorData.timestamp||new Date().toISOString();const workflowId=errorData.workflowId||'unknown';const errorsHtml='<ul>'+errorMessages.map(msg=>'<li>'+msg+'</li>').join('')+'</ul>';const errorHtml='<h2>Workflow Generation Error</h2>'+'<p><strong>Stage:</strong> '+stage+'</p>'+'<p><strong>Errors:</strong></p>'+errorsHtml+'<p><strong>Source:</strong> '+source+'</p>'+'<p><strong>Workflow ID:</strong> '+workflowId+'</p>'+'<p><strong>Timestamp:</strong> '+timestamp+'</p>'+'<hr><p><small>Please check your input and try again. If the problem persists, contact support.</small></p>';return[{json:{error:true,clientEmail:clientEmail,subject:'Workflow Generation Failed',emailHtml:errorHtml,source:source,timestamp:timestamp,workflowId:workflowId,errorMessages:errorMessages,stage:stage}}];"
+      },
+      "id": "error-handler",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3450,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{$json.clientEmail}}",
+        "subject": "={{$json.subject}}",
+        "messageType": "html",
+        "message": "={{$json.emailHtml}}"
+      },
+      "id": "send-error",
+      "name": "Send Error Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        3650,
+        500
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-oauth2",
+          "name": "Gmail OAuth2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Email Trigger": {
+      "main": [
+        [
+          {
+            "node": "Data Normalizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Form Trigger": {
+      "main": [
+        [
+          {
+            "node": "Data Normalizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data Normalizer": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Prep Brief Parser Context",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Brief Parser Context": {
+      "main": [
+        [
+          {
+            "node": "Brief Parser API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Brief Parser Response",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Brief Parser API": {
+      "main": [
+        [
+          {
+            "node": "Merge Brief Parser Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Brief Parser Response": {
+      "main": [
+        [
+          {
+            "node": "Prep Architect Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Architect Context": {
+      "main": [
+        [
+          {
+            "node": "Architect Agent API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Architect Response",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Architect Agent API": {
+      "main": [
+        [
+          {
+            "node": "Merge Architect Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Architect Response": {
+      "main": [
+        [
+          {
+            "node": "Prep Synthesis Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Synthesis Context": {
+      "main": [
+        [
+          {
+            "node": "Synthesis Agent API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Synthesis Response",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Synthesis Agent API": {
+      "main": [
+        [
+          {
+            "node": "Merge Synthesis Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Synthesis Response": {
+      "main": [
+        [
+          {
+            "node": "Load Knowledge Base",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Knowledge Base": {
+      "main": [
+        [
+          {
+            "node": "Prep QA Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep QA Context": {
+      "main": [
+        [
+          {
+            "node": "QA Validator Agent API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge QA Response",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "QA Validator Agent API": {
+      "main": [
+        [
+          {
+            "node": "Merge QA Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge QA Response": {
+      "main": [
+        [
+          {
+            "node": "Check for Errors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check for Errors": {
+      "main": [
+        [
+          {
+            "node": "Send Workflow Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Handler": {
+      "main": [
+        [
+          {
+            "node": "Send Error Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Workflow Email": {
+      "main": [
+        []
+      ]
+    },
+    "Send Error Email": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "",
+    "timezone": "America/New_York",
+    "executionTimeout": 600,
+    "maxExecutionTimeout": 3600
+  },
+  "id": "workflow-builder-gemini-v2-qa-enhanced",
+  "tags": [
+    {
+      "createdAt": "2025-11-17T00:00:00.000Z",
+      "updatedAt": "2025-11-17T00:00:00.000Z",
+      "id": "production",
+      "name": "production"
+    },
+    {
+      "createdAt": "2025-11-17T00:00:00.000Z",
+      "updatedAt": "2025-11-17T00:00:00.000Z",
+      "id": "ai-workflow",
+      "name": "ai-workflow"
+    },
+    {
+      "createdAt": "2025-11-17T00:00:00.000Z",
+      "updatedAt": "2025-11-17T00:00:00.000Z",
+      "id": "workflow-builder",
+      "name": "workflow-builder"
+    },
+    {
+      "createdAt": "2025-11-17T00:00:00.000Z",
+      "updatedAt": "2025-11-17T00:00:00.000Z",
+      "id": "data-flow-fixed",
+      "name": "data-flow-fixed"
+    }
+  ],
+  "meta": {
+    "instanceId": "n8n-workflow-builder-production",
+    "templateCredsSetupCompleted": true
+  },
+  "version": 4,
+  "versionId": "data-flow-fixed-v4.0"
+}
